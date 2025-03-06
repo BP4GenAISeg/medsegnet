@@ -1,5 +1,5 @@
 import os
-import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
 import nibabel as nib
 
@@ -20,7 +20,7 @@ def load_nifti(file_path):
         print(f"Error loading {file_path}: {e}")
         return None
 
-def load_nifti_files(dataset_path, file_extension=".nii", desc="Loading NIfTI Files"):
+def load_nifti_files_old_dont_use(dataset_path, file_extension=".nii", desc="Loading NIfTI Files", max_workers=4):
     """
     Load NIfTI files concurrently from a specified directory.
 
@@ -34,7 +34,7 @@ def load_nifti_files(dataset_path, file_extension=".nii", desc="Loading NIfTI Fi
     """
     nii_files = [os.path.join(dataset_path, f) for f in os.listdir(dataset_path) if f.endswith(file_extension)]
     
-    with concurrent.futures.ThreadPoolExecutor() as executor:
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
         images = list(tqdm(executor.map(load_nifti, nii_files), total=len(nii_files), desc=desc))
 
     if any(img is None for img in images):

@@ -89,21 +89,10 @@ def load_precomputed_dimensions(filename="./data/precomputed_dimensions.json"):
         return {} 
 
 def nearest_power_of_two(value):
-    # assert value > 0, "Input must be a positive integer"
-    if value == 0:
-        return 0
-    power = np.round(np.log2(value))
-    return int(2 ** power)
+    return int(2 ** np.round(np.log2(value))) if value > 0 else 0
 
 def get_save_dir(task):
-    """
-    Extract the task (e.g., Task01) from the path
-    and return the corresponding save directory.
-    """
-    if task:
-        return os.path.join("preprocessing", "images", task)
-    else:
-        return os.path.join("preprocessing", "images", "other")
+    return os.path.join("preprocessing", "images", task if task else "other")
 
 def plot_dimension_boxplot(dims, n_dim, save_dir):
     plt.figure(figsize=(8, 6))
