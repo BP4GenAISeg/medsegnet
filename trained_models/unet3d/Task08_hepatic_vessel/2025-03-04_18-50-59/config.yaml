@@ -1,0 +1,18 @@
+gpu:
+  backend: nccl
+  devices:
+  - 3
+  mode: single
+trained_models:
+  base_dir: trained_models
+training:
+  batch_size: 4
+  dataset_path: datasets/Task08_HepaticVessel/
+  dropout: 0.1
+  images_subdir: imagesTr
+  labels_subdir: labelsTr
+  learning_rate: 1.0e-05
+  n_filters: 8
+  num_classes: 3
+  num_epochs: 20
+  weight_decay: 1.0e-07
