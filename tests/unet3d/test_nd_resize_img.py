@@ -1,7 +1,7 @@
 import unittest
 import numpy as np
 import torch
-from data.datasets import BaseMedicalDecathlonDataset
+from data.datasets import MedicalDecathlonDataset
 from omegaconf import OmegaConf
 from preprocessing.dimensions import resize_nd_image
 import matplotlib.pyplot as plt
@@ -51,7 +51,50 @@ class TestBaseMedicalDecathlonDataset(unittest.TestCase):
 
     def setUp(self):
         self.img = load_nifti("datasets/Task02_Heart/imagesTr/la_003.nii")
+        #permute (h, w, d) using tensor
+        self.img = torch.tensor(self.img).permute(1, 0, 2).numpy()
+        #(h, w, d)
+
         assert self.img is not None, "Image not loaded"
+
+    def test_that_visualizes_how_dims_change(self):
+        target_shape = (320, 320, 130)
+        resized_img = resize_nd_image(self.img, target_shape)
+        visualize_3d_slices(
+            original_img=self.img,
+            resized_img=resized_img,
+            output_path="tests/unet3d/images/hjalte01.png",
+            titles=("Original Slice (320, 320, 130)", "Resized Slice (320, 320, 130)")
+        )
+
+        target_shape = (320+200, 320, 130)
+        resized_img = resize_nd_image(self.img, target_shape)
+        visualize_3d_slices(
+            original_img=self.img,
+            resized_img=resized_img,
+            output_path="tests/unet3d/images/hjalte-W.png",
+            titles=("Original Slice (320, 320, 130)", "Resized Slice (520, 320, 130)")
+        )
+
+        target_shape = (320, 320+200, 130)
+        resized_img = resize_nd_image(self.img, target_shape)
+        visualize_3d_slices(
+            original_img=self.img,
+            resized_img=resized_img,
+            output_path="tests/unet3d/images/hjalte-H.png",
+            titles=("Original Slice (320, 320, 130)", "Resized Slice (320, 520, 130)")
+        )
+
+        target_shape = (320, 320, 130+200)
+        resized_img = resize_nd_image(self.img, target_shape)
+        
+        visualize_3d_slices(
+            original_img=self.img,
+            resized_img=resized_img,
+            output_path="tests/unet3d/images/hjalte-D.png",
+            titles=("Original Slice (320, 320, 130)", "Resized Slice (320, 320, 330)")
+        )
+
 
     def test_resize_nd_image_crop(self):
         target_shape = (128, 128, 128)

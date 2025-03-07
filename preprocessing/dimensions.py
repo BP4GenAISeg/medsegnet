@@ -10,6 +10,7 @@ import json
 import argparse
 import argcomplete
 
+
 def resize_nd_image(img, target_shape, is_mask=False):
     """
     Resizes an n-dimensional image or mask by either cropping (centered) or padding (symmetrical)
@@ -25,6 +26,7 @@ def resize_nd_image(img, target_shape, is_mask=False):
     """
     if len(target_shape) != np.array(img).ndim:
         raise ValueError(f"Target shape {target_shape} must have same dimensions as input image ({img.ndim})")
+   
 
     # Initialize lists to store crop/pad parameters
     slices = []         # Crop slices for each dimension
