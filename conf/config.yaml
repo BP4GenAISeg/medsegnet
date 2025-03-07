@@ -5,17 +5,22 @@ gpu:
   devices: [1]    # Change this to [0, 1, 2, 3] for multi-GPU 
   backend: "nccl" # Use "gloo" if running on CPU, "nccl" if running on GPU, src: https://pytorch.org/docs/stable/distributed.html
 
-training:
-  dataset_path: "datasets/Task08_HepaticVessel/"
+dataset:
+  task_name: "Task04_Hippocampus"
+  target_shape: [64, 64, 64]      
+  base_path: "datasets/"          
   images_subdir: "imagesTr"
   labels_subdir: "labelsTr"
-  batch_size: 2
+
+training:
+  batch_size: 8
   learning_rate: 1e-4
   weight_decay: 1e-7
-  num_epochs: 1
-  n_filters: 8
-  dropout: 0.1
-  num_classes: 3
+  num_epochs: 25
+  n_filters: 16
+  dropout: 0.05
+  num_classes: 4
+  drop_last: True
 
 trained_models: 
   base_dir: "trained_models"

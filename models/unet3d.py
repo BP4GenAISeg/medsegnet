@@ -104,6 +104,6 @@ class UNet3D(nn.Module):
         u9 = torch.cat([u9, c1], dim=1)
         c9 = self.decoder1(u9)
 
-        outputs = self.softmax(self.final_conv(c9))
         outputs = self.final_conv(c9)
         return outputs
+        # outputs = self.softmax(self.final_conv(c9))

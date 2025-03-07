@@ -5,17 +5,10 @@ from omegaconf import DictConfig
 import matplotlib.pyplot as plt
 import torch
 import re
-import concurrent.futures
 from tqdm import tqdm
 import json
 import argparse
 import argcomplete
-
-# Our imports
-from utils.nifti_utils import load_nifti_files
-from utils.task import extract_task_name
-
-
 
 def resize_nd_image(img, target_shape, is_mask=False):
     """
@@ -105,6 +98,7 @@ def plot_dimension_boxplot(dims, n_dim, save_dir):
     plt.savefig(save_path)
 
 def precompute_dimensions(folder_path):
+    #nu giver vi prograqmmet task_name sp ændrer folder_path til task_name og lav lortet om...
     assert os.path.exists(folder_path), f"Folder {folder_path} does not exist"
     
     task = extract_task_name(folder_path)
