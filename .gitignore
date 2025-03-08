@@ -7,3 +7,5 @@ outputs
 **/.pytest_cache/
 datasets/
 outputs/
+trained_models
+trained_models/
