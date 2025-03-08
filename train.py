@@ -32,8 +32,9 @@ def main(cfg: DictConfig):
       batch_norm=True,
   ).to(device)
 
-  criterion = nn.CrossEntropyLoss(ignore_index=0)
-  
+  # criterion = nn.CrossEntropyLoss(ignore_index=0)
+  criterion = CombinedLoss(alpha=0.4)
+
   optimizer = optim.Adam(
     model.parameters(), 
     lr=cfg.training.learning_rate, 

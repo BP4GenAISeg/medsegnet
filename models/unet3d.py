@@ -106,4 +106,8 @@ class UNet3D(nn.Module):
 
         outputs = self.final_conv(c9)
         return outputs
-        # outputs = self.softmax(self.final_conv(c9))
+    
+        # When using CrossEntropyLoss, we should return logits (without softmax)
+        # but during inference we need to apply softmax to get proper probabilities.
+        # Code line removed below:
+        #  outputs = self.softmax(self.final_conv(c9))

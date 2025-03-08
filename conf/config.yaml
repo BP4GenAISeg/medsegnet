@@ -7,17 +7,17 @@ gpu:
 
 dataset:
   task_name: "Task04_Hippocampus"
-  target_shape: [32, 64, 32]      
+  target_shape: [48, 64, 48]     
   base_path: "datasets/"          
   images_subdir: "imagesTr"
   labels_subdir: "labelsTr"
 
 training:
   batch_size: 8
-  learning_rate: 1e-4
+  learning_rate: 1e-3
   weight_decay: 1e-7
-  num_epochs: 20
-  n_filters: 16
+  num_epochs: 1
+  n_filters: 32
   dropout: 0.05
   num_classes: 3
   drop_last: True
