@@ -6,18 +6,18 @@ gpu:
   backend: "nccl" # Use "gloo" if running on CPU, "nccl" if running on GPU, src: https://pytorch.org/docs/stable/distributed.html
 
 dataset:
-  task_name: "Task04_Hippocampus"
-  target_shape: [48, 64, 48]     
+  task_name: "Task08_HepaticVessel"
+  target_shape: [512, 512, 128]     
   base_path: "datasets/"          
   images_subdir: "imagesTr"
   labels_subdir: "labelsTr"
 
 training:
-  batch_size: 8
+  batch_size: 2
   learning_rate: 1e-3
   weight_decay: 1e-7
   num_epochs: 1
-  n_filters: 32
+  n_filters: 8
   dropout: 0.05
   num_classes: 3
   drop_last: True
