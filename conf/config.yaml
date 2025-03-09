@@ -1,26 +1,105 @@
-# Description: Configuration file for the project
+# Description: Configuration file for training on Medicathlon datasets
 
+# Hardware settings (applies globally)
 gpu:
-  mode: "single"  # Options: "single", "multi"
-  devices: [1]    # Change this to [0, 1, 2, 3] for multi-GPU 
-  backend: "nccl" # Use "gloo" if running on CPU, "nccl" if running on GPU, src: https://pytorch.org/docs/stable/distributed.html
+  mode: "single"         # Options: "single", "multi"
+  devices: [0]           # e.g., [0, 1, 2, 3] for multi-GPU
+  backend: "nccl"        # "nccl" for GPU, "gloo" for CPU
 
-dataset:
-  task_name: "Task08_HepaticVessel"
-  target_shape: [512, 512, 128]     
-  base_path: "datasets/"          
-  images_subdir: "imagesTr"
-  labels_subdir: "labelsTr"
+# Active dataset selection
+active_dataset: "Task04_Hippocampus"
 
-training:
+# Default training settings (can be overridden per dataset)
+training_defaults:
   batch_size: 2
   learning_rate: 1e-3
   weight_decay: 1e-7
-  num_epochs: 1
+  num_epochs: 100
   n_filters: 8
-  dropout: 0.05
-  num_classes: 3
+  dropout: 0.1
   drop_last: True
+  patience: 5 # Early stopping patience
 
-trained_models: 
+# Dataset configurations
+datasets:
+  Task01_BrainTumour:
+    target_shape: [240, 240, 155]
+    base_path: "datasets/Task01_BrainTumour/"
+    images_subdir: "imagesTr"
+    labels_subdir: "labelsTr"
+    num_classes: 4
+    training_overrides:        # Optional overrides for this dataset
+      batch_size: 1            # Smaller batch due to larger volume
+      learning_rate: 5e-4
+
+  Task02_Heart:
+    target_shape: [256, 256, 128]
+    base_path: "datasets/Task02_Heart/"
+    images_subdir: "imagesTr"
+    labels_subdir: "labelsTr"
+    num_classes: 2
+
+  Task03_Liver:
+    target_shape: [512, 512, 64]
+    base_path: "datasets/Task03_Liver/"
+    images_subdir: "imagesTr"
+    labels_subdir: "labelsTr"
+    num_classes: 3
+    training_overrides:
+      n_filters: 32            # More filters for complexity
+
+  Task04_Hippocampus:
+    target_shape: [32, 64, 32]
+    base_path: "datasets/Task04_Hippocampus/"
+    images_subdir: "imagesTr"
+    labels_subdir: "labelsTr"
+    num_classes: 3
+    training_overrides:
+      num_epochs: 150
+      n_filters: 32
+
+  Task05_Prostate:
+    target_shape: [320, 320, 24]
+    base_path: "datasets/Task05_Prostate/"
+    images_subdir: "imagesTr"
+    labels_subdir: "labelsTr"
+    num_classes: 3
+
+  Task06_Lung:
+    target_shape: [512, 512, 128]
+    base_path: "datasets/Task06_Lung/"
+    images_subdir: "imagesTr"
+    labels_subdir: "labelsTr"
+    num_classes: 2
+
+  Task07_Pancreas:
+    target_shape: [256, 256, 64]
+    base_path: "datasets/Task07_Pancreas/"
+    images_subdir: "imagesTr"
+    labels_subdir: "labelsTr"
+    num_classes: 3
+
+  Task08_HepaticVessel:
+    target_shape: [512, 512, 128]
+    base_path: "datasets/Task08_HepaticVessel/"
+    images_subdir: "imagesTr"
+    labels_subdir: "labelsTr"
+    num_classes: 3
+
+  Task09_Spleen:
+    target_shape: [512, 512, 64]
+    base_path: "datasets/Task09_Spleen/"
+    images_subdir: "imagesTr"
+    labels_subdir: "labelsTr"
+    num_classes: 2
+
+  Task10_Colon:
+    target_shape: [256, 256, 128]
+    base_path: "datasets/Task10_Colon/"
+    images_subdir: "imagesTr"
+    labels_subdir: "labelsTr"
+    num_classes: 2
+
+# Model storage
+trained_models:
   base_dir: "trained_models"

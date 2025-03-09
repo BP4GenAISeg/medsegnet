@@ -11,7 +11,7 @@ import hydra
 
 from models.unet3d import UNet3D
 from data.datasets import HepaticVesselDataset
-from utils.experimentmanager import ExperimentManager
+from data.checkpoint_manager import ExperimentManager
 from utils.metrics import dice_score
 from preprocessing.dimensions import precompute_dimensions
 from utils.task import extract_task_name
