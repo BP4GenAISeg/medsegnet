@@ -1,9 +1,9 @@
 {
   "files.exclude": {
-    "**/__pycache__/": true,
-    "**/*.pyc": true,
-    "**/*.pyo": true,
-    "**/.pytest_cache/": true,
+    "**/__pycache__/": false,
+    "**/*.pyc": false,
+    "**/*.pyo": false,
+    "**/.pytest_cache/": false
   },
   "python.testing.unittestArgs": [
     "-v",

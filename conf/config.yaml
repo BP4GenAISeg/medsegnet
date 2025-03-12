@@ -1,9 +1,9 @@
-# Description: Configuration file for training on Medicathlon datasets
+  # Description: Configuration file for training on Medicathlon datasets
 
 # Hardware settings (applies globally)
 gpu:
   mode: "single"         # Options: "single", "multi"
-  devices: [0]           # e.g., [0, 1, 2, 3] for multi-GPU
+  devices: [2]           # e.g., [0, 1, 2, 3] for multi-GPU
   backend: "nccl"        # "nccl" for GPU, "gloo" for CPU
 
 # Active dataset selection
@@ -12,18 +12,21 @@ active_dataset: "Task04_Hippocampus"
 # Default training settings (can be overridden per dataset)
 training_defaults:
   batch_size: 2
+  deep_supervision:
+    enable: true
+    prediction: 'weighted_softmax'
   learning_rate: 1e-3
   weight_decay: 1e-7
   num_epochs: 100
-  n_filters: 8
+  n_filters: 16
   dropout: 0.1
   drop_last: True
-  patience: 5 # Early stopping patience
+  patience: 10 # Early stopping patience
 
 # Dataset configurations
 datasets:
   Task01_BrainTumour:
-    target_shape: [240, 240, 155]
+    target_shape: [256, 256, 128]
     base_path: "datasets/Task01_BrainTumour/"
     images_subdir: "imagesTr"
     labels_subdir: "labelsTr"
@@ -31,6 +34,7 @@ datasets:
     training_overrides:        # Optional overrides for this dataset
       batch_size: 1            # Smaller batch due to larger volume
       learning_rate: 5e-4
+      num_epochs: 70
 
   Task02_Heart:
     target_shape: [256, 256, 128]
@@ -39,12 +43,13 @@ datasets:
     labels_subdir: "labelsTr"
     num_classes: 2
 
+
   Task03_Liver:
     target_shape: [512, 512, 64]
     base_path: "datasets/Task03_Liver/"
     images_subdir: "imagesTr"
     labels_subdir: "labelsTr"
-    num_classes: 3
+    num_classes: 3gi
     training_overrides:
       n_filters: 32            # More filters for complexity
 
@@ -55,11 +60,11 @@ datasets:
     labels_subdir: "labelsTr"
     num_classes: 3
     training_overrides:
-      num_epochs: 150
+      num_epochs: 60
       n_filters: 32
 
   Task05_Prostate:
-    target_shape: [320, 320, 24]
+    target_shape: [256, 256, 32]
     base_path: "datasets/Task05_Prostate/"
     images_subdir: "imagesTr"
     labels_subdir: "labelsTr"

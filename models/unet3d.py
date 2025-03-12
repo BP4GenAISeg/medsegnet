@@ -13,6 +13,7 @@
 
 # common imports
 import numpy as np
+import torch.nn.functional as F
 import torch
 import torch.nn as nn
 
@@ -34,8 +35,25 @@ class ConvBlock(nn.Module):
         return self.conv(x)
 
 class UNet3D(nn.Module):
-    def __init__(self, in_channels, num_classes, n_filters, dropout, batch_norm):
+    """
+    A 3D U-Net implementation for volumetric data segmentation with deep supervision.
+    Note: This model operates on 3D volumes and can be memory-intensive. 
+    For a typical input of size (batch, channels, D, H, W), expect GPU memory usage 
+    to scale with the number of filters (n_filters) and volume size (D*H*W). 
+    E.g., with n_filters=16 and 128x128x128 volumes, memory usage may exceed your GPU's capacity.
+    """
+    def __init__(self, 
+                 in_channels: int,
+                 num_classes: int,
+                 n_filters: int = 8,
+                 dropout: float = 0.5,
+                 batch_norm:bool = True
+    ):
         super(UNet3D, self).__init__()
+        assert in_channels > 0, "in_channels must be positive"
+        assert num_classes > 0, "num_classes must be positive"
+        assert n_filters > 0, "n_filters must be positive"
+        assert 0 <= dropout <= 1, "dropout must be between 0 and 1"
 
         self.encoder1 = ConvBlock(in_channels, n_filters, batch_norm=batch_norm)
         self.pool1 = nn.MaxPool3d(2, stride=2)
@@ -71,11 +89,15 @@ class UNet3D(nn.Module):
         self.decoder1 = ConvBlock(n_filters + n_filters, n_filters, batch_norm=batch_norm)
 
         self.final_conv = nn.Conv3d(n_filters, num_classes, kernel_size=1, stride=1)
-        self.softmax = nn.Softmax(dim=1)
+    
+        # Deep supervision branches
+        self.ds2 = nn.Conv3d(n_filters * 2, num_classes, kernel_size=1)  # Supervision at 1/2 resolution
+        self.ds3 = nn.Conv3d(n_filters * 4, num_classes, kernel_size=1)  # Supervision at 1/4 resolution
+        self.ds4 = nn.Conv3d(n_filters * 8, num_classes, kernel_size=1)  # Supervision at 1/8 resolution
 
-    def forward(self, x):
-        c1 = self.encoder1(x)
-        p1 = self.drop1(self.pool1(c1))
+    def forward(self, x): # TODO variable changes e.g. see below:
+        c1 = self.encoder1(x) # e1
+        p1 = self.drop1(self.pool1(c1)) # act_e1
 
         c2 = self.encoder2(p1)
         p2 = self.drop2(self.pool2(c2))
@@ -88,7 +110,7 @@ class UNet3D(nn.Module):
 
         c5 = self.center(p4)
 
-        u6 = self.up4(c5)
+        u6 = self.up4(c5) #d4?
         u6 = torch.cat([u6, c4], dim=1)
         c6 = self.drop5(self.decoder4(u6))
 
@@ -104,10 +126,18 @@ class UNet3D(nn.Module):
         u9 = torch.cat([u9, c1], dim=1)
         c9 = self.decoder1(u9)
 
-        outputs = self.final_conv(c9)
-        return outputs
-    
-        # When using CrossEntropyLoss, we should return logits (without softmax)
-        # but during inference we need to apply softmax to get proper probabilities.
-        # Code line removed below:
-        #  outputs = self.softmax(self.final_conv(c9))
+        final = self.final_conv(c9)
+
+        if self.training:
+            # Compute deep supervision outputs only in training mode
+            ds2 = self.ds2(c8)
+            ds2 = F.interpolate(ds2, scale_factor=2, mode='trilinear', align_corners=True)
+
+            ds3 = self.ds3(c7)
+            ds3 = F.interpolate(ds3, scale_factor=4, mode='trilinear', align_corners=True)
+
+            ds4 = self.ds4(c6)
+            ds4 = F.interpolate(ds4, scale_factor=8, mode='trilinear', align_corners=True)
+            return final, ds2, ds3, ds4
+        else:
+            return final
