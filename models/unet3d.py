@@ -47,14 +47,16 @@ class UNet3D(nn.Module):
                  num_classes: int,
                  n_filters: int = 8,
                  dropout: float = 0.5,
-                 batch_norm:bool = True
+                 batch_norm:bool = True,
+                 ds: bool = True,
     ):
         super(UNet3D, self).__init__()
         assert in_channels > 0, "in_channels must be positive"
         assert num_classes > 0, "num_classes must be positive"
         assert n_filters > 0, "n_filters must be positive"
         assert 0 <= dropout <= 1, "dropout must be between 0 and 1"
-
+        self.ds = ds
+        
         self.encoder1 = ConvBlock(in_channels, n_filters, batch_norm=batch_norm)
         self.pool1 = nn.MaxPool3d(2, stride=2)
         self.drop1 = nn.Dropout3d(dropout)
@@ -128,7 +130,8 @@ class UNet3D(nn.Module):
 
         final = self.final_conv(c9)
 
-        if self.training:
+
+        if self.ds and (self.training or self.use_all_outputs_during_inference):
             # Compute deep supervision outputs only in training mode
             ds2 = self.ds2(c8)
             ds2 = F.interpolate(ds2, scale_factor=2, mode='trilinear', align_corners=True)

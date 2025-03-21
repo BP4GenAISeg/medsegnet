@@ -6,7 +6,6 @@ import argcomplete
 import torch
 #our imports
 from preprocessing.dimensions import nearest_power_of_two
-from utils.nifti_utils import load_nifti
 from utils.table import print_norm_image_stats
 
 
@@ -26,7 +25,7 @@ def is_image_normalized(image: np.ndarray, tol=1e-6) -> bool:
     min_val, max_val = image.min(), image.max()
     return min_val >= 0 - tol and max_val <= 1 + tol
 
-def normalize_image(input_image):
+def normalize_image_old(input_image):
     if not isinstance(input_image, torch.Tensor):
         input_image = torch.tensor(input_image, dtype=torch.float32)
 
@@ -42,7 +41,8 @@ def normalize_image(input_image):
     return input_image
 
 
-def normalize_ghazi(image):
+def normalize_image(image):
+
     pmin, pmax = np.percentile(image, [5, 95])
     # if pmin == pmax:  # Handle edge case
     
@@ -54,18 +54,6 @@ def normalize_ghazi(image):
     image = (image + max_val) / (2 * max_val + 1e-6) 
  
     #Clip all voxel values to the range [0, 1]
-    return np.clip(image, 0, 1)
+    image = np.clip(image, 0, 1)
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Normalize pixel values of a NIfTI image."
-    )
-    parser.add_argument("-i", "--image", type=str, help="Path to the NIfTI image", required=True)
-    args = parser.parse_args()
-    argcomplete.autocomplete(parser)
-
-    image_path = args.image
-
-    image = load_nifti(image_path)
-    normalized_image = normalize(image)
-    print_norm_image_stats(normalized_image)
+    return torch.tensor(image, dtype=torch.float32) 

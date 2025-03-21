@@ -1,1 +1,6 @@
+I dag:
+- Weighted softmax
+- Majoity softmax 
+
+
 1. Arg parser (seed, active_datapath)

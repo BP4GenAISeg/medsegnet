@@ -9,7 +9,7 @@ class DataManager:
     def __init__(
             self,
             dataset: MedicalDecathlonDataset,
-            training_cfg: DictConfig,
+            arch_cfg: DictConfig,
             split_ratios: Tuple[float, float, float] = (0.80, 0.05, 0.15), 
             seed: int = 42,
         ):
@@ -20,10 +20,9 @@ class DataManager:
                 raise ValueError("Split ratios must sum to 1.")
                     
             self.dataset = dataset
-            self.training_cfg = training_cfg
+            self.arch_cfg = arch_cfg
             self.split_ratios = split_ratios
             self.seed = seed
-
             self.train_dataset, self.val_dataset, self.test_dataset = self._split_dataset()
             self.train_dataloader, self.val_dataloader, self.test_dataloader = self._create_dataloaders()
 
@@ -50,19 +49,19 @@ class DataManager:
     def _create_dataloaders(self):
         train_dataloader = DataLoader(
             self.train_dataset,
-            batch_size=self.training_cfg.batch_size,
+            batch_size=self.arch_cfg.training.batch_size,
             shuffle=True,
-            drop_last=self.training_cfg.drop_last
+            drop_last=self.arch_cfg.training.drop_last
         )
         val_dataloader = DataLoader(
             self.val_dataset,
-            batch_size=self.training_cfg.batch_size,
+            batch_size=self.arch_cfg.training.batch_size,
             shuffle=False,
             drop_last=False
         )
         test_dataloader = DataLoader(
             self.test_dataset,
-            batch_size=self.training_cfg.batch_size,
+            batch_size=self.arch_cfg.training.batch_size,
             shuffle=False,
             drop_last=False
         )
@@ -72,45 +71,3 @@ class DataManager:
         """Return the train, val, and test DataLoaders."""
         return self.train_dataloader, self.val_dataloader, self.test_dataloader
     
-
-
-# def create_data_splits_and_loaders(dataset, cfg, split_ratios=(0.80, 0.05, 0.15), seed=42):
-#     """
-#     Split a dataset into train, validation, and test sets and return corresponding DataLoaders.
-    
-
-#     Maybe switch to this instead of class and put inside utils.py??
-#     """
-#     assert abs(sum(split_ratios) - 1.0) < 1e-6, "Split ratios must sum to 1.0"
-    
-#     total_size = len(dataset)
-#     train_size = int(split_ratios[0] * total_size)
-#     val_size = int(split_ratios[1] * total_size)
-#     test_size = total_size - train_size - val_size  # Avoid rounding errors
-    
-#     train_dataset, val_dataset, test_dataset = random_split(
-#         dataset,
-#         [train_size, val_size, test_size],
-#         generator=torch.Generator().manual_seed(seed)
-#     )
-    
-#     train_dataloader = DataLoader(
-#         train_dataset,
-#         batch_size=cfg.training.batch_size,
-#         shuffle=True,
-#         drop_last=cfg.training.drop_last
-#     )
-#     val_dataloader = DataLoader(
-#         val_dataset,
-#         batch_size=cfg.training.batch_size,
-#         shuffle=False,
-#         drop_last=False
-#     )
-#     test_dataloader = DataLoader(
-#         test_dataset,
-#         batch_size=cfg.training.batch_size,
-#         shuffle=False,
-#         drop_last=False
-#     )
-    
-#     return train_dataloader, val_dataloader, test_dataloader

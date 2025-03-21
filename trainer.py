@@ -5,14 +5,15 @@ from tqdm import trange, tqdm
 from torch.utils.data import DataLoader
 
 from data.datasets import MedicalDecathlonDataset
+from utils.inferenceutils import get_weights_depth, weighted_softmax
 from utils.metrics import dice_coefficient
 from utils.utils import RunManager
+
 
 class Trainer:
   def __init__(
         self, 
-        dataset_cfg: DictConfig,
-        training_cfg: DictConfig, 
+        arch_cfg: DictConfig,
         model: torch.nn.Module, 
         train_dataloader: DataLoader[MedicalDecathlonDataset],
         val_dataloader: DataLoader[MedicalDecathlonDataset],
@@ -32,11 +33,12 @@ class Trainer:
         self.rm = run_manager
         self.best_val_loss = float('inf')
         self.early_stopping_counter = 0
-        self.patience = training_cfg.patience
-        self.num_epochs = training_cfg.num_epochs
-        self.num_classes = dataset_cfg.num_classes
+        self.patience = arch_cfg.training.patience
+        self.num_epochs = arch_cfg.training.num_epochs
+        self.num_classes = arch_cfg.dataset.num_classes
         # Define weights for deep supervision outputs
-        self.ds_weights = [0.4, 0.2, 0.2, 0.2] #[1.0, 0.3, 0.3, 0.3]  # [final, ds2, ds3, ds4]
+        self.ds_weights = get_weights_depth(arch_cfg.model.depth)
+        print("DELETE: ", self.ds_weights)
         self.rm.info(f"Trainer initialized with {self.num_epochs} epochs and patience {self.patience}")
         
   def train_one_epoch(self, epoch: int):
@@ -113,7 +115,11 @@ class Trainer:
                   images, masks = images.to(self.device), masks.to(self.device)
 
                   outputs = self.model(images)
-                  loss = self.criterion(outputs, masks) #Model not in training so no deep supervision (one output only)
+                  
+                  loss = sum(
+                      (weight * self.criterion(output, masks) for weight, output in zip(self.ds_weights, outputs)),
+                      torch.tensor(0.0, device=self.device)
+                  ) if len(outputs) > 1 else self.criterion(outputs, masks)
                   
                   if torch.isnan(loss) or torch.isinf(loss):
                     raise ValueError(f"Invalid validation loss: {loss.item()}")

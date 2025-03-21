@@ -12,28 +12,53 @@ from omegaconf import OmegaConf
 import re
 import logging
 
-def divide_dataset_config(cfg: DictConfig) -> Tuple[DictConfig, DictConfig]:
+def prepare_dataset_config(cfg: DictConfig) -> DictConfig:
     """
-    Merges default training settings with dataset-specific overrides.
+    Prepares a unified configuration by merging architecture-specific defaults,
+    training defaults, and dataset-specific settings for the active dataset.
     """
+    if "active_dataset" not in cfg or cfg.active_dataset not in cfg.datasets:
+        raise KeyError(f"Active dataset '{cfg.active_dataset}' not found in datasets.")
+    
+    if "active_architecture" not in cfg or cfg.active_architecture not in cfg.architectures:
+        raise KeyError(f"Active architecture '{cfg.active_architecture}' not found in architectures.")
+    
     dataset_cfg: DictConfig = cfg.datasets[cfg.active_dataset]
-    overrides = dataset_cfg.get("training_overrides", {})
-    merged_training = OmegaConf.merge(cfg.training_defaults, overrides)
-    
-    if not isinstance(merged_training, DictConfig):
-        raise TypeError("Merged training config is not a DictConfig. Please check your configuration structure.")
-    
-    return dataset_cfg, merged_training
+    arch_cfg: DictConfig = cfg.architectures[cfg.active_architecture]
+
+    # Merge model defaults with any dataset-specific model overrides
+    model_overrides = dataset_cfg.get(f"{cfg.active_architecture}_overrides", {}).get("model", {})
+    merged_model = OmegaConf.merge(arch_cfg.get("model_defaults", {}), model_overrides)
+
+    training_overrides = dataset_cfg.get(f"{cfg.active_architecture}_overrides", {}).get("training", {})
+    merged_training = OmegaConf.merge(arch_cfg.get("training_defaults", {}), training_overrides)
+
+    unified_cfg = OmegaConf.create({
+        "model": merged_model,
+        "training": merged_training,
+        "dataset": dataset_cfg
+    })
+
+    # Clean the dataset config by removing architecture-specific overrides
+    dataset_cleaned = OmegaConf.create({
+        k: v for k, v in dataset_cfg.items()
+        if k != f"{cfg.active_architecture}_overrides"
+    })
+    unified_cfg.dataset = dataset_cleaned
+
+    if not isinstance(unified_cfg, DictConfig):
+        raise TypeError("Unified config is not a DictConfig. Check your configuration structure.")
+
+    return unified_cfg
+
 
 class RunManager:
     def __init__(self, 
-                 dataset_cfg: DictConfig, 
-                 training_cfg: DictConfig, 
+                 arch_cfg: DictConfig, 
                  model_name: str, 
                  task_name: str
         ):
-        self.dataset_cfg = dataset_cfg
-        self.training_cfg = training_cfg
+        self.arch_cfg = arch_cfg
         self.model_name = model_name
         self.task_name = task_name
         self.timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -62,13 +87,8 @@ class RunManager:
         Usually at the start of the training process. Such that, if you run multiple experiments, the 
         configuration is stored at the beginning of each experiment, and don't get overwritten.
         """
-        dataset_cfg_copy = OmegaConf.create(self.dataset_cfg)
-        if "training_overrides" in dataset_cfg_copy:
-            del dataset_cfg_copy["training_overrides"]
-            
         with open(os.path.join(self.exp_dir, "config.yaml"), "w") as f:
-            OmegaConf.save(dataset_cfg_copy, f)
-            OmegaConf.save(self.training_cfg, f)
+            OmegaConf.save(self.arch_cfg, f)
 
     def save_model(self, model: torch.nn.Module):
         """

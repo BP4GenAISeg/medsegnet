@@ -5,7 +5,6 @@ import nibabel as nib
 import torch
 from torch.utils.data import Dataset
 from preprocessing.normalization import normalize_image
-import scipy.ndimage as ndimage
 import numpy as np
 import torch.nn.functional as F
 import torch
@@ -27,15 +26,15 @@ VALID_TASKS = {
 }
 
 class MedicalDecathlonDataset(Dataset):
-    def __init__(self, dataset_cfg: DictConfig):
-        self.images_path = f"{dataset_cfg.base_path}{dataset_cfg.images_subdir}"
-        self.masks_path = f"{dataset_cfg.base_path}{dataset_cfg.labels_subdir}"
+    def __init__(self, arch_cfg: DictConfig):
+        self.images_path = f"{arch_cfg.dataset.base_path}{arch_cfg.dataset.images_subdir}"
+        self.masks_path = f"{arch_cfg.dataset.base_path}{arch_cfg.dataset.labels_subdir}"
 
         assert os.path.exists(self.images_path), f"Images path not found: {self.images_path}"
         assert os.path.exists(self.masks_path), f"Labels path not found: {self.masks_path}"
         
-        self.target_shape = dataset_cfg.target_shape # [W, H, D]
-        self.num_classes = dataset_cfg.num_classes
+        self.target_shape = arch_cfg.dataset.target_shape # [W, H, D]
+        self.num_classes = arch_cfg.dataset.num_classes
         self.image_files = sorted(os.listdir(self.images_path))
         self.label_files = sorted(os.listdir(self.masks_path))
 
@@ -56,7 +55,7 @@ class MedicalDecathlonDataset(Dataset):
         image, mask = self.load_img_and_gts(idx)
 
         image = resize_nd_image(image, self.target_shape, is_mask=False)
-        
+
         image = normalize_image(image)
 
         image = image.float().permute(2, 1, 0)       # (D, H, W)
@@ -66,19 +65,15 @@ class MedicalDecathlonDataset(Dataset):
         mask = resize_nd_image(mask, self.target_shape, is_mask=True)
 
         mask = torch.from_numpy(mask).permute(2, 1, 0).long()          # (D, H, W)
-        # mask_one_hot = F.one_hot(mask, num_classes=self.num_classes) # (D, H, W, C) (we do later in the model)
-        # mask_one_hot = mask_one_hot.permute(3, 0, 1, 2).float()      # (C, D, H, W)
-        
         return image, mask
 
 class BrainTumourDataset(MedicalDecathlonDataset):
     """
     Modality: Multimodal multisite MRI data (FLAIR, T1w, T1gd, T2w)
     """
-    def load_img_and_gts(self, idx, modality=1):
+    def load_img_and_gts(self, idx, mod_idx=1):
         image, mask = super().load_img_and_gts(idx)                    # (W, H, D, Modalities)
-        image = image[:, :, :, modality]                               # (W, H, D)
-        
+        image = image[:, :, :, mod_idx]                               # (W, H, D)
         return image, mask
     
     def __getitem__(self, idx):
@@ -91,9 +86,9 @@ class ProstateDataset(MedicalDecathlonDataset):
     """
     Modality: Multimodal MR (T2, ADC)
     """
-    def load_img_and_gts(self, idx, modality=0):
+    def load_img_and_gts(self, idx, mod_idx=0):
         image, mask = super().load_img_and_gts(idx)                    # (W, H, D, Modalities)
-        image = image[:, :, :, modality]                               # (W, H, D)
+        image = image[:, :, :, mod_idx]                               # (W, H, D)
         
         return image, mask
     
