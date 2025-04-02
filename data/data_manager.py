@@ -10,8 +10,8 @@ class DataManager:
             self,
             dataset: MedicalDecathlonDataset,
             arch_cfg: DictConfig,
+            seed: int,
             split_ratios: Tuple[float, float, float] = (0.80, 0.05, 0.15), 
-            seed: int = 42,
         ):
             """
             Initialize the DataManager with a dataset and configuration.
@@ -53,12 +53,14 @@ class DataManager:
             shuffle=True,
             drop_last=self.arch_cfg.training.drop_last
         )
+        #TODO maybe make arch_cfg.validation.batch_size
         val_dataloader = DataLoader(
             self.val_dataset,
             batch_size=self.arch_cfg.training.batch_size,
             shuffle=False,
             drop_last=False
         )
+        #TODO maybe make arch_cfg.test.batch_size
         test_dataloader = DataLoader(
             self.test_dataset,
             batch_size=self.arch_cfg.training.batch_size,

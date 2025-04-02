@@ -67,7 +67,6 @@ def resize_nd_image(img, target_shape, is_mask=False):
         # For images, pad with edge values (avoids black borders)
         # padded = np.pad(cropped, pad_widths, mode='edge')
         padded = np.pad(cropped, pad_widths, mode='constant', constant_values=0)
-
     return padded
 
 def save_precomputed_dimensions(dim_dict, filename="./data/precomputed_dimensions.json"):

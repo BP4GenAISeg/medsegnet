@@ -1,60 +1,121 @@
 from omegaconf import OmegaConf
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+import torch
+import torch.nn as nn
+from typing import Optional, Sequence
 
-def get_all_loss_classes():
-    return {name.lower(): cls for name, cls in globals().items() if isinstance(cls, type) and issubclass(cls, nn.Module)}
+from utils.assertions import ensure_has_attr
 
-def get_loss_from_config(arch_cfg, rm):
+LOSS_FUNCTIONS = {} # TODO moe into a dedicated module :)
+
+def register_loss_function(cls):
+    """Decorator to register loss functions by class name (lowercased)."""
+    LOSS_FUNCTIONS[cls.__name__.lower()] = cls
+    return cls
+
+def get_loss_fn(arch_cfg):
     model_cfg = arch_cfg.model
-    if "loss" not in model_cfg:
-        rm.info("Loss not defined in the config. Using default CombinedLoss with alpha=0.3", stdout=True)
-        return CombinedLoss(alpha=0.3)
+
+    assert "loss" in model_cfg, f"Loss not defined in the config."
+    assert "name" in model_cfg.loss, f"Loss name not defined in the config."
+    assert "params" in model_cfg.loss, f"Loss params not defined in the config."
+
     loss_name = model_cfg.loss.name.lower()
     loss_params = OmegaConf.to_container(model_cfg.loss.params, resolve=True)
+    assert isinstance(loss_params, dict), f"Expected a dict for loss params, got {type(loss_params)}"
 
-    if not isinstance(loss_params, dict):
-        raise TypeError(f"Expected a dictionary for loss params, got {type(loss_params)}")
-    
     loss_params = {str(k): v for k, v in loss_params.items()}
 
-    loss_classes = get_all_loss_classes()
+    assert loss_name in LOSS_FUNCTIONS, f"Loss function '{loss_name}' not found in registered loss functions."
+    loss_class = LOSS_FUNCTIONS[loss_name]
 
-    if loss_name not in loss_classes:
-        raise ValueError(f"Loss function '{loss_name}' is not defined. Available options: {list(loss_classes.keys())}")
-
-    rm.info(f"Using loss function: {loss_name}", stdout=True)
-    loss_class = loss_classes[loss_name]
     return loss_class(**loss_params)
 
+def compute_ds_loss(
+    criterion: nn.Module,
+    outputs: Sequence[torch.Tensor],
+    masks: torch.Tensor,
+    ds_weights: Sequence[float],
+    device: torch.device
+) -> torch.Tensor:
+    """
+    Compute the loss with deep supervision.
 
-# new tryt
+    If multiple outputs are provided (i.e., deep supervision is enabled),
+    the loss is computed for each output weighted by ds_weights and summed.
+    If only a single output is provided, the loss is computed on that output.
+    """
+    # if len(outputs) != len(ds_weights):
+    #     raise ValueError(f"Number of outputs ({len(outputs)})"
+    #                      f"must match number of weights ({len(ds_weights)})")
+    # Does not work, because training might be done with a subset of outputs
+    # but the validation only uses noly_final, so would need an ugly check.
+    if len(outputs) > 1:
+        loss = sum(
+            (weight * criterion(output, masks) for weight, output in zip(ds_weights, outputs)),
+            torch.tensor(0.0, device=device)
+        ) 
+    else:
+        loss = criterion(outputs[0], masks)  
+    return loss
+
+
+
+def compute_dice(prob, target, smooth=1e-6, dims=(0, 1, 2, 3)):
+    """
+    Compute the Dice score for a single class.
+    """
+    intersection = torch.sum(prob * target, dim=dims)
+    union = torch.sum(prob, dim=dims) + torch.sum(target, dim=dims)
+    dice = (2 * intersection + smooth) / (union + smooth)
+    return dice
+
+
+def soft_dice_loss(output, target, num_classes, smooth=1e-6, ignore_index=None):
+    """
+    Compute the soft Dice loss in a differentiable way using softmax probabilities.
+    """
+    # Convert target to one-hot encoding with shape (B, C, D, H, W)
+    target_one_hot = F.one_hot(target, num_classes=num_classes).permute(0, 4, 1, 2, 3).float()
+
+    probs = torch.softmax(output, dim=1) # (B, C, D, H, W)
+
+    dice_scores = []
+    for c in range(num_classes):
+        if ignore_index is not None and c == ignore_index:
+            continue
+        # Compute dice score for class c using the helper function
+        dice_score = compute_dice(probs[:, c, ...], target_one_hot[:, c, ...], smooth=smooth)
+        dice_scores.append(dice_score)
+    
+    # Average dice score across classes and convert it to a loss
+    mean_dice = torch.stack(dice_scores).mean()
+    return 1 - mean_dice
+
+
+@register_loss_function
 class CombinedLoss(nn.Module):
     """
     Combined loss function for multi-class segmentation.
     The loss is a linear combination of the cross-entropy loss and the Dice loss.
     """
-    def __init__(self, alpha=0.5, ignore_index=0, eps=1e-6):
+    def __init__(self, alpha: float, ignore_index: Optional[int] = None):
         super().__init__()
         self.alpha = alpha
-        self.ce = nn.CrossEntropyLoss(ignore_index=ignore_index)
-        self.eps = eps
+        self.ce = nn.CrossEntropyLoss()
+        self.ignore_index = ignore_index
 
-    def dice_loss(self, pred, target,eps=1e-6):
-        pred = torch.softmax(pred, dim=1)  #(B, C, D, H, W)
-
-
-        target_one_hot = torch.nn.functional.one_hot(target, num_classes=pred.shape[1]).permute(0, 4, 1, 2, 3)
-        intersection = (pred * target_one_hot).sum(dim=(2, 3, 4))
-        union = pred.sum(dim=(2, 3, 4)) + target_one_hot.sum(dim=(2, 3, 4))
-        return 1 - ((2. * intersection + eps) / (union + eps)).mean()
+    def soft_dice_loss(self, output, target):
+        num_classes = output.shape[1]
+        return soft_dice_loss(output, target, num_classes, smooth=1e-6, ignore_index=self.ignore_index)
 
     def forward(self, pred, target):
-        return self.alpha * self.ce(pred, target) + (1 - self.alpha) * self.dice_loss(pred, target)
+        return self.alpha * self.ce(pred, target) + (1 - self.alpha) * self.soft_dice_loss(pred, target)
 
 
-
-##### Multi-class segmentation #####
+@register_loss_function
 class FocalDiceLoss(nn.Module):
     """
     Credits: https://github.com/usagisukisuki/Adaptive_t-vMF_Dice_loss/blob/main/SegLoss/focal_diceloss.py
@@ -98,39 +159,3 @@ class FocalDiceLoss(nn.Module):
             loss += dice * weight[i]
             
         return loss / self.n_classes
-
-class CombinedLossdasdas(nn.Module):
-    def __init__(self, alpha=0.5, ignore_index=0):
-        super().__init__()
-        self.alpha = alpha
-        self.ignore_index = ignore_index
-        self.ce = nn.CrossEntropyLoss(ignore_index=ignore_index)
-    
-    def dice_loss(self, pred, target, smooth=1):
-        # pred: (B, C, D, H, W); target: (B, D, H, W) with integer class labels
-        pred = torch.softmax(pred, dim=1)
-        # target: torch.Size([2, 32, 64, 32])  
-        
-        # Convert integer target to one-hot encoding: (B, D, H, W, C) -> (B, C, D, H, W)
-        target_one_hot = F.one_hot(target, num_classes=pred.shape[1])
-        target_one_hot = target_one_hot.permute(0, 4, 1, 2, 3).float()
-        
-        # Create valid mask to ignore pixels with ignore_index
-        valid_mask = (target != self.ignore_index).unsqueeze(1)  # (B, 1, D, H, W)
-        pred = pred * valid_mask
-        target_one_hot = target_one_hot * valid_mask
-        
-        intersection = (pred * target_one_hot).sum(dim=(2, 3, 4))
-        union = pred.sum(dim=(2, 3, 4)) + target_one_hot.sum(dim=(2, 3, 4))
-        dice = (2. * intersection + smooth) / (union + smooth)
-        return 1 - dice.mean()
-
-    def forward(self, pred, target):
-        ce_loss = self.ce(pred, target)
-        dice_loss = self.dice_loss(pred, target)
-        return self.alpha * ce_loss + (1 - self.alpha) * dice_loss
-    
-
-if __name__ == "__main__":
-    # Example usage
-    print(get_all_loss_classes())

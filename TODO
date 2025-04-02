@@ -4,3 +4,26 @@ I dag:
 
 
 1. Arg parser (seed, active_datapath)
+
+
+
+
+
+2. ---- 
+u cant change the model_defaults loss function params etc. because theyre not inside the default one.. so anything new would not work, so say i changed name to like combinedlossv2 and a new param it would say the parasm doesnt exist....
+
+
+Error executing job with overrides: []
+Traceback (most recent call last):
+  File "/home/si-hj/Desktop/medsegnet/train.py", line 37, in main
+    arch_cfg = prepare_dataset_config(cfg)
+  File "/home/si-hj/Desktop/medsegnet/utils/utils.py", line 31, in prepare_dataset_config
+    merged_model = OmegaConf.merge(arch_cfg.get("model_defaults", {}), model_overrides)
+omegaconf.errors.ConfigKeyError: Key 'ignore_dsindex' is not in struct
+    full_key: architectures.unet.model_defaults.loss.params.ignore_dsindex
+    object_type=dict
+
+Set the environment variable HYDRA_FULL_ERROR=1 for a complete stack trace.
+2. END ---- 
+
+

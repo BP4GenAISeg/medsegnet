@@ -1,5 +1,6 @@
-from hamcrest import none
+from typing import Optional
 import numpy as np
+from sympy import N
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,32 +11,58 @@ import torch.nn.functional as F
 # Precision, Recall, F1-score
 # Accuracy
 
-def dice_coefficient(outputs, masks, num_classes, smooth=1e-6): # TODO change to cfg.num_classes
-    """
-    Compute the Dice coefficient for multi-class segmentation.
-    
-    Args:
-        outputs (torch.Tensor): Model predictions (B, C, D, H, W) with logits.
-        masks (torch.Tensor): Ground truth masks (B, D, H, W) with integer labels.
-        num_classes (int): Number of classes (default: 3).
-        smooth (float): Smoothing factor to avoid division by zero (default: 1e-6).
-    
-    Returns:
-        float: Average Dice coefficient across all classes.
-    """
-    preds = torch.argmax(outputs, dim=1)  # Shape: (B, D, H, W)
-    dice_total = 0.0
-    
+
+def compute_dice_score(
+    preds: torch.Tensor,
+    masks: torch.Tensor,
+    c: int,
+    smooth: float = 1e-6,  # Remove unused `ignore_index`
+) -> torch.Tensor:
+    """Compute Dice score for a single class."""
+    pred_c = (preds == c).float()
+    mask_c = (masks == c).float()
+    intersection = (pred_c * mask_c).sum()
+    sum_pred = pred_c.sum()
+    sum_mask = mask_c.sum()
+    return (2 * intersection + smooth) / (sum_pred + sum_mask + smooth)
+
+
+def _compute_dice_scores(
+    preds: torch.Tensor,
+    masks: torch.Tensor,
+    num_classes: int,
+    smooth: float,
+    ignore_index: Optional[int],
+) -> list[torch.Tensor]:
+    """Helper to compute Dice scores for all classes (excluding `ignore_index`)."""
+    scores = []
     for c in range(num_classes):
-        pred_c = (preds == c).float()  # Binary mask for class c in predictions
-        mask_c = (masks == c).float()  # Binary mask for class c in ground truth
-        intersection = (pred_c * mask_c).sum()  # Sum of overlapping pixels
-        sum_pred = pred_c.sum()  # Total predicted pixels for class c
-        sum_mask = mask_c.sum()  # Total ground truth pixels for class c
-        dice = (2 * intersection + smooth) / (sum_pred + sum_mask + smooth)
-        dice_total += dice
-    
-    return dice_total / num_classes  # Average over all classes
+        if ignore_index is not None and c == ignore_index:
+            continue  # Skip ignored class
+        scores.append(compute_dice_score(preds, masks, c, smooth))
+    return scores
 
 
-# TODO move it to a better place
+def dice_coefficient(
+    preds: torch.Tensor,
+    masks: torch.Tensor,
+    num_classes: int,
+    smooth: float = 1e-6,
+    ignore_index: Optional[int] = None,
+) -> float:
+    """Return average Dice coefficient across non-ignored classes."""
+    dice_scores = _compute_dice_scores(preds, masks, num_classes, smooth, ignore_index)
+    if not dice_scores:
+        return 0.0
+    return torch.mean(torch.stack(dice_scores)).item()
+
+
+def dice_coefficient_classes(
+    preds: torch.Tensor,
+    masks: torch.Tensor,
+    num_classes: int,
+    smooth: float = 1e-6,
+    ignore_index: Optional[int] = None,
+) -> list[torch.Tensor]:
+    """Return list of Dice scores for each non-ignored class."""
+    return _compute_dice_scores(preds, masks, num_classes, smooth, ignore_index)

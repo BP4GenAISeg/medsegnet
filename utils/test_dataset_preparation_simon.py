@@ -18,24 +18,24 @@ def prepare_dataset_config(cfg: DictConfig) -> DictConfig:
     arch_cfg: DictConfig = cfg.architectures[cfg.active_architecture]
 
     # Merge model defaults with any dataset-specific model overrides
-    model_overrides = dataset_cfg.get(f"{cfg.active_architecture}_overrides", {}).get("model", {})
-    merged_model = OmegaConf.merge(arch_cfg.get("model_defaults", {}), model_overrides)
+    # model_overrides = dataset_cfg.get(f"{cfg.active_architecture}_overrides", {}).get("model", {})
+    merged_model = OmegaConf.merge(arch_cfg.model_defaults, dataset_cfg.overrides.model)
 
-    training_overrides = dataset_cfg.get(f"{cfg.active_architecture}_overrides", {}).get("training", {})
-    merged_training = OmegaConf.merge(arch_cfg.get("training_defaults", {}), training_overrides)
+    merged_training = OmegaConf.merge(arch_cfg.training_defaults, dataset_cfg.overrides.training)
+    # training_overrides = dataset_cfg.get(f"overrides", {}).get("training", {})
+    # merged_training = OmegaConf.merge(arch_cfg.get("training_defaults", {}), training_overrides)
 
     unified_cfg = OmegaConf.create({
         "model": merged_model,
         "training": merged_training,
-        "dataset": dataset_cfg
+        "dataset": OmegaConf.create({
+            # Clean the dataset config by removing architecture-specific overrides
+            k: v for k, v in dataset_cfg.items()
+            if k != f"overrides"
+        })
     })
 
-    # Clean the dataset config by removing architecture-specific overrides
-    dataset_cleaned = OmegaConf.create({
-        k: v for k, v in dataset_cfg.items()
-        if k != f"{cfg.active_architecture}_overrides"
-    })
-    unified_cfg.dataset = dataset_cleaned
+    print(unified_cfg)
 
     if not isinstance(unified_cfg, DictConfig):
         raise TypeError("Unified config is not a DictConfig. Check your configuration structure.")

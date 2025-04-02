@@ -1,78 +1,90 @@
+from sys import stderr
 import torch
 from torch import nn, optim
 from torch.utils.data import DataLoader
 from omegaconf import DictConfig
 import hydra
 from data.data_manager import DataManager
-from models.test_unet3d import UNet3DDynamic
-from models.unet3d import UNet3D
 from trainer import Trainer
 from data.datasets import MedicalDecathlonDataset, VALID_TASKS, ProstateDataset, BrainTumourDataset
-from utils.losses import get_loss_from_config
-from utils.utils import RunManager, prepare_dataset_config
+from utils.assertions import ensure_has_attr, ensure_has_attrs
+from utils.losses import get_loss_fn
+from utils.utils import RunManager, prepare_dataset_config, setup_seed
 import random
 import numpy as np
+from models.factory import create_model
+from utils.wandb_logger import get_wandb_logger
 
-EXCLUDED_TASKS = {"Task01_BrainTumour"}
+
+EXCLUDED_TASKS = {"Task01_BrainTumour", "Task05_Prostate"}
 DATASET_MAPPING = {task: MedicalDecathlonDataset for task in VALID_TASKS - EXCLUDED_TASKS}
 DATASET_MAPPING["Task01_BrainTumour"] = BrainTumourDataset
 DATASET_MAPPING["Task05_Prostate"] = ProstateDataset
 
-def setup_seed():
-  seed = 42
-  torch.manual_seed(seed)
-  torch.cuda.manual_seed_all(seed)  
-  np.random.seed(seed)
-  random.seed(seed)
-  torch.use_deterministic_algorithms(True, warn_only=True)
-  torch.backends.cudnn.deterministic = True
-  torch.backends.cudnn.benchmark = False  
 
-def get_config_key_or_throw(arch_cfg, key):
-  return 
-
+#Husk hydra.utils.instantiate MED HYDRAS _target_ CONVENTION!
 
 @hydra.main(config_path="conf", config_name="config", version_base=None)
 def main(cfg: DictConfig):
-  arch_cfg = prepare_dataset_config(cfg)
-  task_name = cfg.active_dataset    
+  ensure_has_attrs(cfg, ["active_dataset", "active_architecture", "gpu"], Exception)
+  seed = cfg.seed
+  setup_seed(seed)
+
+  unified_cfg = prepare_dataset_config(cfg)
+  task_name = cfg.active_dataset 
+  model_name = cfg.active_architecture
+
   assert task_name in DATASET_MAPPING , f"Unknown dataset: {task_name}"
 
-  run_manager = RunManager(arch_cfg, model_name="unet3d", task_name=task_name)
+  run_manager = RunManager(unified_cfg)
 
   gpu_device = cfg.gpu.devices[0] #TODO: Handle multiple GPUs
   device = torch.device(f"cuda:{gpu_device}") if torch.cuda.is_available() else torch.device("cpu")
   
-  model = UNet3D(
-      in_channels=1,
-      num_classes=arch_cfg.dataset.num_classes,
-      n_filters=arch_cfg.model.n_filters,
-      dropout=arch_cfg.training.dropout,
-      batch_norm=True,
-  ).to(device)
+  # create the models (Unet3d/Unet3D_dyn/...)
+  model = create_model(unified_cfg, model_name).to(device)
+  criterion = get_loss_fn(unified_cfg)
 
-  criterion = get_loss_from_config(arch_cfg, run_manager)
-
-  optimizer = optim.Adam(
-    model.parameters(), 
-    lr=arch_cfg.training.learning_rate, 
-    weight_decay=arch_cfg.training.weight_decay
-  )
-
+  try: 
+    optimizer = hydra.utils.instantiate(unified_cfg.training.optimizer, params=model.parameters())
+  except Exception as e:
+    run_manager.error(f"Failed to instantiate optimizer: {e}", stdout=True)
+    exit(1)
+  
   dataset_class = DATASET_MAPPING[task_name]
-  full_dataset = dataset_class(arch_cfg)
+  full_dataset = dataset_class(unified_cfg, phase="train")
 
-  data_manager = DataManager(full_dataset, arch_cfg, split_ratios=(0.80, 0.05, 0.15), seed=42)
+  data_manager = DataManager(full_dataset, unified_cfg, seed, split_ratios=(0.80, 0.05, 0.15))
   train_dataloader, val_dataloader, test_dataloader = data_manager.get_dataloaders()
 
+  wandb_logger = get_wandb_logger(config=cfg, model=model) 
+
+  lr_scheduler = None
+  if unified_cfg.training.get('scheduler'):
+    try: 
+      lr_scheduler = hydra.utils.instantiate(unified_cfg.training.scheduler, optimizer=optimizer)
+    except Exception as e:
+      run_manager.error(f"Failed to instantiate scheduler: {e}", stdout=True)
+
   trainer = Trainer(
-      arch_cfg, model, train_dataloader, val_dataloader, test_dataloader,
-      criterion, optimizer, device, run_manager
+      unified_cfg, model, train_dataloader, val_dataloader, test_dataloader,
+      criterion, optimizer, lr_scheduler, device, run_manager, wandb_logger
   )
-  trainer.train()
-  
-  trainer.test()
+
+  final_status_code = 0 
+  try: 
+    trainer.train()
+    trainer.test()
+  except Exception as e:
+    run_manager.error(f"Training failed: {e}")
+    final_status_code = 1
+  finally:
+    if wandb_logger: 
+      wandb_logger.finalize(exit_code=final_status_code)
+    run_manager.info("Training completed.")
+
+    if run_manager:
+      run_manager.close_loggers()
 
 if __name__ == "__main__":
-  setup_seed()
   main()

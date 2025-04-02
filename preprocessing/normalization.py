@@ -51,7 +51,7 @@ def normalize_image(image):
         nearest_power_of_two(abs(pmax))
     )
     
-    image = (image + max_val) / (2 * max_val + 1e-6) 
+    image = (image + max_val + 1e-6) / (2 * max_val + 1e-6) 
  
     #Clip all voxel values to the range [0, 1]
     image = np.clip(image, 0, 1)

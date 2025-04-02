@@ -1,0 +1,67 @@
+Date : 2025-04-02 14:31:31
+Directory : /home/si-hj/Desktop/medsegnet
+Total : 14 files,  3332 codes, 0 comments, 14 blanks, all 3346 lines
+
+Languages
++------------------+------------+------------+------------+------------+------------+
+| language         | files      | code       | comment    | blank      | total      |
++------------------+------------+------------+------------+------------+------------+
+| pip requirements |         14 |      3,332 |          0 |         14 |      3,346 |
++------------------+------------+------------+------------+------------+------------+
+
+Directories
++-----------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| path                                                                                    | files      | code       | comment    | blank      | total      |
++-----------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| .                                                                                       |         14 |      3,332 |          0 |         14 |      3,346 |
+| wandb                                                                                   |         14 |      3,332 |          0 |         14 |      3,346 |
+| wandb/run-20250402_102433-7rxth8uq                                                      |          1 |        238 |          0 |          1 |        239 |
+| wandb/run-20250402_102433-7rxth8uq/files                                                |          1 |        238 |          0 |          1 |        239 |
+| wandb/run-20250402_102519-z0cj3uj5                                                      |          1 |        238 |          0 |          1 |        239 |
+| wandb/run-20250402_102519-z0cj3uj5/files                                                |          1 |        238 |          0 |          1 |        239 |
+| wandb/run-20250402_102553-98btf6g8                                                      |          1 |        238 |          0 |          1 |        239 |
+| wandb/run-20250402_102553-98btf6g8/files                                                |          1 |        238 |          0 |          1 |        239 |
+| wandb/run-20250402_103637-9j1jt62y                                                      |          1 |        238 |          0 |          1 |        239 |
+| wandb/run-20250402_103637-9j1jt62y/files                                                |          1 |        238 |          0 |          1 |        239 |
+| wandb/run-20250402_103755-npt2ttk4                                                      |          1 |        238 |          0 |          1 |        239 |
+| wandb/run-20250402_103755-npt2ttk4/files                                                |          1 |        238 |          0 |          1 |        239 |
+| wandb/run-20250402_103838-tx2ji2e8                                                      |          1 |        238 |          0 |          1 |        239 |
+| wandb/run-20250402_103838-tx2ji2e8/files                                                |          1 |        238 |          0 |          1 |        239 |
+| wandb/run-20250402_121436-f082zi8q                                                      |          1 |        238 |          0 |          1 |        239 |
+| wandb/run-20250402_121436-f082zi8q/files                                                |          1 |        238 |          0 |          1 |        239 |
+| wandb/run-20250402_121940-369zl44l                                                      |          1 |        238 |          0 |          1 |        239 |
+| wandb/run-20250402_121940-369zl44l/files                                                |          1 |        238 |          0 |          1 |        239 |
+| wandb/run-20250402_132241-hxmy7pxr                                                      |          1 |        238 |          0 |          1 |        239 |
+| wandb/run-20250402_132241-hxmy7pxr/files                                                |          1 |        238 |          0 |          1 |        239 |
+| wandb/run-20250402_132308-w62be3o0                                                      |          1 |        238 |          0 |          1 |        239 |
+| wandb/run-20250402_132308-w62be3o0/files                                                |          1 |        238 |          0 |          1 |        239 |
+| wandb/run-20250402_135610-fimqtpwt                                                      |          1 |        238 |          0 |          1 |        239 |
+| wandb/run-20250402_135610-fimqtpwt/files                                                |          1 |        238 |          0 |          1 |        239 |
+| wandb/run-20250402_135806-mdm7jv5g                                                      |          1 |        238 |          0 |          1 |        239 |
+| wandb/run-20250402_135806-mdm7jv5g/files                                                |          1 |        238 |          0 |          1 |        239 |
+| wandb/run-20250402_140918-djta71z7                                                      |          1 |        238 |          0 |          1 |        239 |
+| wandb/run-20250402_140918-djta71z7/files                                                |          1 |        238 |          0 |          1 |        239 |
+| wandb/run-20250402_142707-nefc71wb                                                      |          1 |        238 |          0 |          1 |        239 |
+| wandb/run-20250402_142707-nefc71wb/files                                                |          1 |        238 |          0 |          1 |        239 |
++-----------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+
+Files
++-----------------------------------------------------------------------------------------+------------------+------------+------------+------------+------------+
+| filename                                                                                | language         | code       | comment    | blank      | total      |
++-----------------------------------------------------------------------------------------+------------------+------------+------------+------------+------------+
+| /home/si-hj/Desktop/medsegnet/wandb/run-20250402_102433-7rxth8uq/files/requirements.txt | pip requirements |        238 |          0 |          1 |        239 |
+| /home/si-hj/Desktop/medsegnet/wandb/run-20250402_102519-z0cj3uj5/files/requirements.txt | pip requirements |        238 |          0 |          1 |        239 |
+| /home/si-hj/Desktop/medsegnet/wandb/run-20250402_102553-98btf6g8/files/requirements.txt | pip requirements |        238 |          0 |          1 |        239 |
+| /home/si-hj/Desktop/medsegnet/wandb/run-20250402_103637-9j1jt62y/files/requirements.txt | pip requirements |        238 |          0 |          1 |        239 |
+| /home/si-hj/Desktop/medsegnet/wandb/run-20250402_103755-npt2ttk4/files/requirements.txt | pip requirements |        238 |          0 |          1 |        239 |
+| /home/si-hj/Desktop/medsegnet/wandb/run-20250402_103838-tx2ji2e8/files/requirements.txt | pip requirements |        238 |          0 |          1 |        239 |
+| /home/si-hj/Desktop/medsegnet/wandb/run-20250402_121436-f082zi8q/files/requirements.txt | pip requirements |        238 |          0 |          1 |        239 |
+| /home/si-hj/Desktop/medsegnet/wandb/run-20250402_121940-369zl44l/files/requirements.txt | pip requirements |        238 |          0 |          1 |        239 |
+| /home/si-hj/Desktop/medsegnet/wandb/run-20250402_132241-hxmy7pxr/files/requirements.txt | pip requirements |        238 |          0 |          1 |        239 |
+| /home/si-hj/Desktop/medsegnet/wandb/run-20250402_132308-w62be3o0/files/requirements.txt | pip requirements |        238 |          0 |          1 |        239 |
+| /home/si-hj/Desktop/medsegnet/wandb/run-20250402_135610-fimqtpwt/files/requirements.txt | pip requirements |        238 |          0 |          1 |        239 |
+| /home/si-hj/Desktop/medsegnet/wandb/run-20250402_135806-mdm7jv5g/files/requirements.txt | pip requirements |        238 |          0 |          1 |        239 |
+| /home/si-hj/Desktop/medsegnet/wandb/run-20250402_140918-djta71z7/files/requirements.txt | pip requirements |        238 |          0 |          1 |        239 |
+| /home/si-hj/Desktop/medsegnet/wandb/run-20250402_142707-nefc71wb/files/requirements.txt | pip requirements |        238 |          0 |          1 |        239 |
+| Total                                                                                   |                  |      3,332 |          0 |         14 |      3,346 |
++-----------------------------------------------------------------------------------------+------------------+------------+------------+------------+------------+
