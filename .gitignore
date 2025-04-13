@@ -11,3 +11,4 @@ trained_models
 trained_models/
 trained_models.zip
 wandb/
+wandb/** 
