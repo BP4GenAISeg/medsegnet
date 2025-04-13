@@ -63,6 +63,48 @@ def compute_ds_loss(
 
 
 
+def compute_ds_loss_old(
+    criterion: nn.Module,
+    pred_masks: Sequence[torch.Tensor],
+    gt_masks: torch.Tensor,
+    ds_weights: Sequence[float],
+    device: torch.device,
+    ms_encoder_pairs: Optional[Sequence[tuple[torch.Tensor, torch.Tensor]]] = None,
+    mse_weight: float = 1.0
+) -> torch.Tensor:
+    """
+    Compute the loss with deep supervision.
+
+    If multiple outputs are provided (i.e., deep supervision is enabled),
+    the loss is computed for each output weighted by ds_weights and summed.
+    If only a single output is provided, the loss is computed on that output.
+    """
+    # if len(outputs) != len(ds_weights):
+    #     raise ValueError(f"Number of outputs ({len(outputs)})"
+    #                      f"must match number of weights ({len(ds_weights)})")
+    # Does not work, because training might be done with a subset of outputs
+    # but the validation only uses noly_final, so would need an ugly check.
+
+    total_loss = 0
+    # Deep supervision loss
+    if len(pred_masks) > 1:
+        ds_loss = sum(
+            (weight * criterion(pred_mask, mask) for weight, pred_mask, mask in zip(ds_weights, pred_masks, gt_masks)),
+            torch.tensor(0.0, device=device)
+        )
+    else:
+        ds_loss = criterion(pred_masks[0], gt_masks[0])
+
+    mse_loss_fn = torch.nn.MSELoss()
+    mse_loss = torch.tensor(0.0, device=device)
+    if ms_encoder_pairs is not None:
+        for ms_feat, enc_feat in ms_encoder_pairs:
+            mse_loss += mse_loss_fn(ms_feat, enc_feat.detach())  # .detach() prevents encoder gradients
+
+    total_loss = ds_loss + mse_weight * mse_loss
+    return total_loss
+
+
 def compute_dice(prob, target, smooth=1e-6, dims=(0, 1, 2, 3)):
     """
     Compute the Dice score for a single class.

@@ -44,6 +44,7 @@ class UNet3D(ModelBase):
                  dropout: float,
                  batch_norm: bool,
                  ds: bool,
+                 ms: bool,
                  inference_fusion_mode: str,
                  deep_supervision_levels: int,
                  depth: int,
@@ -117,6 +118,7 @@ class UNet3D(ModelBase):
             self.ds_weights_params = nn.Parameter(torch.log(init_weights))  # Softmax will amplify deeper layers
 
     def forward(self, x, phase):
+
         # x1 = x       # full resolution
         # x2 = downsample(input, factor=2)  
         

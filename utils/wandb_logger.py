@@ -72,12 +72,12 @@ class WandBLogger:
 
             wandb.watch(model, log='all', log_freq=100) # Log gradients and parameters
 
-    def log_metrics(self, metrics: dict, step: int | None = None, commit: bool = True):
+    def log_metrics(self, metrics: dict, step: int | None = None, commit: bool = False):
         """Log metrics with optional step parameter."""
         if self.run:
             self.run.log(metrics, step=step, commit=commit) # commit=True ensures data is synced
 
-    def log_weights(self, weights: list[torch.Tensor] | torch.nn.ParameterList, step: int | None = None, commit: bool = True):
+    def log_weights(self, weights: list[torch.Tensor] | torch.nn.ParameterList, step: int | None = None, commit: bool = False):
         """Log deep supervision weights with optional step parameter."""
         if not self.run:
             return 
@@ -103,7 +103,7 @@ class WandBLogger:
         max_samples: int = 4,
         slice_dim: int = 2, # Dimension to slice along (0=Batch, 1=Channel(ignore), 2=Depth, 3=Height, 4=Width)
         slice_index: int | None = None, # Index to slice (None for middle)
-        commit: bool = True
+        commit: bool = False 
     ):
         if not self.run:
             return

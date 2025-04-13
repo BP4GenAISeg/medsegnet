@@ -11,5 +11,6 @@ def get_common_args(config: DictConfig) -> dict:
         'dropout': config.training.dropout,
         'batch_norm': config.training.batch_norm,
         'ds': config.model.deep_supervision.enabled,
+        'ms': config.model.deep_supervision.multi_scaling,
         'inference_fusion_mode': config.model.deep_supervision.inference_fusion_mode
     }

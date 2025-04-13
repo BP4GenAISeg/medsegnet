@@ -5,7 +5,8 @@ from torch.utils.data import DataLoader
 from omegaconf import DictConfig
 import hydra
 from data.data_manager import DataManager
-from trainer import Trainer
+# from trainer import Trainer
+from trainer_multiscale import Trainer
 from data.datasets import MedicalDecathlonDataset, VALID_TASKS, ProstateDataset, BrainTumourDataset
 from utils.assertions import ensure_has_attr, ensure_has_attrs
 from utils.losses import get_loss_fn
@@ -14,7 +15,7 @@ import random
 import numpy as np
 from models.factory import create_model
 from utils.wandb_logger import get_wandb_logger
-
+import argparse
 
 EXCLUDED_TASKS = {"Task01_BrainTumour", "Task05_Prostate"}
 DATASET_MAPPING = {task: MedicalDecathlonDataset for task in VALID_TASKS - EXCLUDED_TASKS}
@@ -86,5 +87,12 @@ def main(cfg: DictConfig):
     if run_manager:
       run_manager.close_loggers()
 
+
+
 if __name__ == "__main__":
-  main()
+    parser = argparse.ArgumentParser(description="Train a medical segmentation model.")
+    parser.add_argument("--arch", "-aa", help="The active architecture to use.")
+    args = parser.parse_args()
+
+    # Pass the architecture argument to the Hydra configuration
+    main()

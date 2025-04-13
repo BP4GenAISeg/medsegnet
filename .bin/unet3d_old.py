@@ -89,7 +89,6 @@ class UNet3D(ModelBase):
         self.drop4 = nn.Dropout3d(dropout)
         # (1, 64, 2, 4, 2)
 
-
         """
         Bottleneck layer (center block, bottom of the U-Net).
         """
@@ -138,50 +137,48 @@ class UNet3D(ModelBase):
         
         # todo check which ms2,3,4 are needed and to start from
 
+        enc1 = self.encoder1(x)
+        pool1 = self.drop1(self.pool1(enc1))
 
+        enc2 = self.encoder2(pool1)
+        pool2 = self.drop2(self.pool2(enc2))
 
-        c2 = self.encoder2(p1)
-        p2 = self.drop2(self.pool2(c2))
+        enc3 = self.encoder3(pool2)
+        pool3 = self.drop3(self.pool3(enc3))
 
+        enc4 = self.encoder4(pool3)
+        pool4 = self.drop4(self.pool4(enc4))
 
+        bottleneck = self.center(pool4)
 
-        c3 = self.encoder3(p2)
-        p3 = self.drop3(self.pool3(c3))
+        up4 = self.up4(bottleneck) #d4?
+        up4 = torch.cat([up4, enc4], dim=1)
+        dec4 = self.drop5(self.decoder4(up4))
 
+        up3 = self.up3(dec4)
+        up3 = torch.cat([up3, enc3], dim=1)
+        dec3 = self.drop6(self.decoder3(up3))
 
+        up2 = self.up2(dec3)
+        up2 = torch.cat([up2, enc2], dim=1)
+        dec2 = self.drop7(self.decoder2(up2))
 
-        c4 = self.encoder4(p3)
-        p4 = self.drop4(self.pool4(c4))
+        up1 = self.up1(dec2)
+        up1 = torch.cat([up1, enc1], dim=1)
+        dec1 = self.decoder1(up1)
 
-        c5 = self.center(p4)
-
-        u6 = self.up4(c5) #d4?
-        u6 = torch.cat([u6, c4], dim=1)
-        c6 = self.drop5(self.decoder4(u6))
-
-        u7 = self.up3(c6)
-        u7 = torch.cat([u7, c3], dim=1)
-        c7 = self.drop6(self.decoder3(u7))
-
-        u8 = self.up2(c7)
-        u8 = torch.cat([u8, c2], dim=1)
-        c8 = self.drop7(self.decoder2(u8))
-
-        u9 = self.up1(c8)
-        u9 = torch.cat([u9, c1], dim=1)
-        c9 = self.decoder1(u9)
-
-        final = self.final_conv(c9)
+        # Final conv to get channels=num_classes
+        final = self.final_conv(dec1)
 
         if self.ds and (self.training or self.inference_fusion_mode != 'only_final'):
             # Compute deep supervision outputs only in training mode
-            ds4 = self.ds4(c6)
+            ds4 = self.ds4(dec4)
             ds4 = F.interpolate(ds4, scale_factor=8, mode='trilinear', align_corners=True)
 
-            ds3 = self.ds3(c7)
+            ds3 = self.ds3(dec3)
             ds3 = F.interpolate(ds3, scale_factor=4, mode='trilinear', align_corners=True)
 
-            ds2 = self.ds2(c8)
+            ds2 = self.ds2(dec2)
             ds2 = F.interpolate(ds2, scale_factor=2, mode='trilinear', align_corners=True)
             return (final, ds2, ds3, ds4)
         else:

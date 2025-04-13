@@ -1,21 +1,21 @@
 # Hardware settings (applies globally)
 gpu:
   mode: "single"         # Options: "single", "multi"
-  devices: [0]           # e.g., [0, 1, 2, 3] for multi-GPU
+  devices: [1]           # e.g., [0, 1, 2, 3] for multi-GPU
   backend: "nccl"        # "nccl" for GPU, "gloo" for CPU
 
 # Logging settings
 tracking:
-  log_to_wandb: true 
+  log_to_wandb: false 
   wandb_project: "MedicalSegmentation" 
   # Dynamic name, so like "unet_lr_1e-4_wd_1e-7_{date}"
   # Then its really use to compare in graphs between runs
-  run_name: "unet_run_${now:%Y-%m-%d_%H-%M-%S}" 
+  run_name: "unet_pat_7_${now:%Y-%m-%d_%H-%M-%S}" 
   
 
 
 # -- Active architechture selection --
-active_architecture: unet3d
+active_architecture: simon-msunet3d
 
 # -- Active dataset selection --
 # active_dataset: Task01_BrainTumour
@@ -26,6 +26,9 @@ active_dataset: Task04_Hippocampus
 seed: 42 # None for no seed and integer for a numbered seed
 
 
+# Model storage
+trained_models:
+  base_dir: "trained_models"
 
 
 # **********************************************************************
@@ -34,13 +37,14 @@ seed: 42 # None for no seed and integer for a numbered seed
 # *  dataset-specific overrides.                                       *
 # **********************************************************************
 architectures:
-  unet3d:
+  simon-msunet3d:
     model_defaults:                         # Only configuration for the model
       depth: 4         
       in_channels: 1
       n_filters: 8
-      deep_supervision:                     # TODO change to 'ds'
+      deep_supervision:                     # TODO consider change to 'ds'
         enabled: true                       # Training with deep supervision
+        multi_scaling: true                 # 
         levels: 3
         inference_fusion_mode: 'only_final' # Options: 'weighted_softmax', 'weighted_majority', 'only_final'
       loss:
@@ -49,11 +53,15 @@ architectures:
           alpha: 0.35                        # alpha * CrossEntropy + (1 - alpha) * DiceLoss
           ignore_index: null                 # 0 for no ignore, null for None
     training_defaults:    
-      # scheduler: null  
-      scheduler: null
-        # _target_: torch.optim.lr_scheduler.StepLR
-        # step_size: 30 # Decay LR every 30 epochs
-        # gamma: 0.1    # Multiply LR by 0.1
+      early_stopping: #set null if disable
+        patience: 15
+        verbose: true
+        delta: 1e-3
+        criterion: 'loss'
+      scheduler: 
+        _target_: torch.optim.lr_scheduler.StepLR
+        step_size: 30 # Decay LR every 30 epochs
+        gamma: 0.1    # Multiply LR by 0.1
       optimizer: 
         _target_: torch.optim.AdamW
         params: 
@@ -135,10 +143,10 @@ datasets:
         num_epochs: 200
         dropout: 0.3
         drop_last: false
-        patience: 15
+        patience: 7
       model: 
-        depth: 5
-        n_filters: 32
+        depth: 4
+        n_filters: 8
         deep_supervision:
           enabled: true
           levels: 4
@@ -190,7 +198,3 @@ datasets:
     images_subdir: "imagesTr"
     labels_subdir: "labelsTr"
     num_classes: 2
-
-# Model storage
-trained_models:
-  base_dir: "trained_models"

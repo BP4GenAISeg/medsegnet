@@ -57,35 +57,6 @@ class MedicalDecathlonDataset(Dataset):
             tio.RescaleIntensity((0, 1), percentiles=(0.5, 99.5)),
         ]
 
-        # if self.phase == 'train':
-        #     common_transforms += [
-        #         # Spatial transforms (applied first)
-        #         tio.RandomFlip(axes=(0, 1, 2), p=0.4),
-        #         tio.RandomAffine(
-        #             scales=(0.1, 0.1, 0.05),  # Z-axis scaling creates shear-like effect
-        #             degrees=(-12, 12),        # Rotation range
-        #             translation=8,            # Translation in mm
-        #             p=0.5
-        #         ),
-        #         tio.RandomElasticDeformation(
-        #             num_control_points=5,
-        #             max_displacement=8,
-        #             locked_borders=1,
-        #             p=0.3
-        #         ),
-                
-        #         # Intensity transforms
-        #         tio.RandomNoise(std=0.02, p=0.3),
-        #         tio.RandomBiasField(coefficients=0.3, p=0.2),
-        #         tio.RandomBlur(std=(0.25, 1.0), p=0.25),
-        #         tio.RandomGamma(log_gamma=(-0.2, 0.2), p=0.25),
-                
-        #         # Advanced transforms
-        #         # tio.RandomAnisotropy(p=0.1),
-        #         # tio.RandomGhosting(axes=2, num_ghosts=3, p=0.15)
-        #     ]
-
-
         if self.phase == 'train':
             common_transforms += [
                 # Spatial transforms (applied first)
@@ -129,6 +100,8 @@ class MedicalDecathlonDataset(Dataset):
     
     def __getitem__(self, idx):
         image, mask = self.load_img_and_gts(idx)
+
+        #FIXME with multiscale, resizing is only in training, no longer in test if ms is enabled.
 
         # Add channel dim and create subject
         image = image[np.newaxis]

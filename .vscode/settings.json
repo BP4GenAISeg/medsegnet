@@ -28,7 +28,7 @@
     },
     "FIXME": {
       "icon": "flame", 
-      "iconColour": "#FF0000", 
+      "iconColour": "#e91717", 
       "gutterIcon": true
     },
     "XXX": {

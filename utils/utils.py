@@ -2,7 +2,7 @@ import string
 from networkx import omega
 from numpy import divide
 from omegaconf import DictConfig, OmegaConf
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 import os
 from datetime import datetime
 import torch
@@ -16,7 +16,7 @@ import numpy as np
 import random
 
 
-def setup_seed(seed):
+def setup_seed(seed: Optional[int]):
   if not seed: return
   torch.manual_seed(seed)
   torch.cuda.manual_seed_all(seed)  
