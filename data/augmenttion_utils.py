@@ -1,5 +1,11 @@
 
+import torch
 import torchio as tio
+import numpy as np
+
+def _nearest_pow2_shape(shape):
+    return tuple(2 ** int(round(np.log2(s))) for s in shape)
+
 
 class AugmentationUtils:
 
@@ -36,15 +42,19 @@ class AugmentationUtils:
 
         return tio.Compose(all_transforms_list)
 
+        
     @staticmethod
-    def get_validation_transforms(
-        rescale_percentiles=(0.5, 99.5)
-    ):
-        validation_transforms = [
+    def get_validation_transforms(rescale_percentiles=(0.5, 99.5)):
+        print("[IMPORTANT]: currently using the same transforms for validation and test.")
+        # target_shape = (32, 64, 32) #full resolution
+        target_shape = (16, 32, 16) #half resolution
+        
+        transforms = [
             tio.RescaleIntensity((0, 1), percentiles=rescale_percentiles),
+            tio.CropOrPad(target_shape, padding_mode='constant'),
         ]
-        return tio.Compose(validation_transforms)
-
+        return tio.Compose(transforms) 
+    
     @staticmethod
     def get_test_transforms(
         rescale_percentiles=(0.5, 99.5)

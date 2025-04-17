@@ -100,7 +100,10 @@ class Trainer:
                     torch.tensor(0.0, device=self.device)
                 )
                 mse = torch.nn.MSELoss()
-                consistency_loss = sum(mse(enc, msb) for enc, msb in zip(*consistency_pairs))
+                consistency_loss = sum(
+                    mse(enc, ms) 
+                    for enc, ms in consistency_pairs
+                )
                 loss = segmentation_loss + consistency_loss
 
                 if torch.isnan(loss) or torch.isinf(loss):
@@ -256,7 +259,7 @@ class Trainer:
                     # current_weights = self.model.get_ds_weights()
                     # loss = compute_ds_loss(self.criterion, outputs, masks, current_weights, self.device)
                     pred_logits = self.model(images)
-                    print(f"Pred shape: {pred_logits.shape}, Mask shape: {masks.shape}")
+                    
                     loss = self.criterion(pred_logits, masks)
 
                     if torch.isnan(loss) or torch.isinf(loss):

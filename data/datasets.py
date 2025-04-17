@@ -56,13 +56,13 @@ class MedicalDecathlonDataset(Dataset):
         self.target_shape = self.arch_cfg.dataset.target_shape
         self.num_classes = self.arch_cfg.dataset.num_classes
 
-        self.transform = AugmentationUtils.get_train_transforms(self.target_shape)
-        # if self.phase == "train":
-        #     self.transform = AugmentationUtils.get_train_transforms(self.target_shape)
-        # elif self.phase == "val":
-        #     self.transform = AugmentationUtils.get_validation_transforms()
-        # elif self.phase == 'test':
-        #     self.transform = AugmentationUtils.get_test_transforms()
+        # self.transform = AugmentationUtils.get_train_transforms(self.target_shape)
+        if self.phase == "train":
+            self.transform = AugmentationUtils.get_train_transforms(self.target_shape)
+        elif self.phase == "val":
+            self.transform = AugmentationUtils.get_validation_transforms()
+        elif self.phase == 'test':
+            self.transform = AugmentationUtils.get_test_transforms()
 
     def __len__(self):
         return len(self.image_files)
@@ -82,8 +82,6 @@ class MedicalDecathlonDataset(Dataset):
         # Add channel dim and create subject
         image = image[np.newaxis]
         mask = mask[np.newaxis]
-
-        #
 
         subject = tio.Subject(
             image=tio.ScalarImage(tensor=image),

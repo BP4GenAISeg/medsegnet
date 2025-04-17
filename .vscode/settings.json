@@ -27,8 +27,8 @@
       "iconColour": "#FF0000"
     },
     "FIXME": {
-      "icon": "flame", 
-      "iconColour": "#e91717", 
+      "icon": "flame",
+      "iconColour": "#e91717",
       "gutterIcon": true
     },
     "XXX": {
@@ -41,4 +41,7 @@
       "icon": "issue-closed"
     }
   },
+  "conventionalCommits.scopes": [
+    "training"
+  ],
 }
