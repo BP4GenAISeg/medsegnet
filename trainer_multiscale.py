@@ -88,7 +88,6 @@ class Trainer:
             for batch_idx, (images, masks) in enumerate(progress_bar):
                 images, masks = images.to(self.device), masks.to(self.device)
                 self.optimizer.zero_grad()
-                
             
                 # outputs = self.model(images, "train") 
                 # current_weights = self.model.get_ds_weights()

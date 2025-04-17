@@ -15,7 +15,7 @@ tracking:
 
 
 # -- Active architechture selection --
-active_architecture: simon-msunet3d
+active_architecture: simonmsdyn-unet3d
 
 # -- Active dataset selection --
 # active_dataset: Task01_BrainTumour
@@ -37,7 +37,7 @@ trained_models:
 # *  dataset-specific overrides.                                       *
 # **********************************************************************
 architectures:
-  simon-msunet3d:
+  simonmsdyn-unet3d:
     model_defaults:                         # Only configuration for the model
       depth: 4         
       in_channels: 1

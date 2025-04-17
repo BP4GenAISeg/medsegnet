@@ -130,10 +130,10 @@ class UNet3D(ModelBase):
         out = x
         
         # Encoder pathway
-        for enc, pool, dropout in zip(self.encoders, self.pools, self.enc_dropouts):
+        for enc, pool, drop in zip(self.encoders, self.pools, self.enc_dropouts):
             out = enc(out)
             encoder_features.append(out)
-            out = dropout(pool(out))
+            out = drop(pool(out))
         
         # Center
         center_out = self.center(out)
@@ -141,7 +141,7 @@ class UNet3D(ModelBase):
         # Decoder pathway
         decoder_features = []
         out = center_out
-        for i, (up_conv, decoder, dropout) in enumerate(zip(self.up_convs, self.decoders, self.dec_dropouts)):
+        for i, (up_conv, dec, drop) in enumerate(zip(self.up_convs, self.decoders, self.dec_dropouts)):
             out = up_conv(out)
             # Use the corresponding encoder feature for the skip connection (in reverse order)
             #numbers 0, 1, 2 represent indexes.
@@ -152,8 +152,8 @@ class UNet3D(ModelBase):
             #               center,
             skip = encoder_features[-(i+1)]
             out = torch.cat([out, skip], dim=1)
-            out = decoder(out)
-            out = dropout(out)
+            out = dec(out)
+            out = drop(out)
             decoder_features.append(out)
         
         final = self.final_conv(out)

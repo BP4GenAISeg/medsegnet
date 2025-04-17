@@ -1,6 +1,8 @@
 import os
+from typing import Optional
 import numpy as np
 from omegaconf import DictConfig
+from data.augmenttion_utils import AugmentationUtils
 import nibabel as nib
 import torch
 from torch.utils.data import Dataset
@@ -13,6 +15,7 @@ import re
 from preprocessing.normalization import is_image_normalized
 import numpy as np
 import torchio as tio
+from utils.assertions import ensure, ensure_pexists
 
 VALID_TASKS = {
     "Task01_BrainTumour",
@@ -28,80 +31,53 @@ VALID_TASKS = {
 }
 
 class MedicalDecathlonDataset(Dataset):
-    def __init__(self, arch_cfg: DictConfig, phase: str):
+    def __init__(self, 
+                 arch_cfg: DictConfig, 
+                 phase: str,
+                 image_files: Optional[list] = None,
+                 mask_files: Optional[list] = None
+    ):
         self.arch_cfg = arch_cfg
         self.phase = phase
-        self._init_paths()
+
+        base = arch_cfg.dataset.base_path
+        self.images_path = f"{base}{arch_cfg.dataset.images_subdir}"
+        self.masks_path = f"{base}{arch_cfg.dataset.labels_subdir}"
+        ensure_pexists(self.images_path, FileNotFoundError)
+        ensure_pexists(self.masks_path, FileNotFoundError)
+    
+        if image_files is None or mask_files is None:
+            self.image_files = sorted(os.listdir(self.images_path))
+            self.mask_files  = sorted(os.listdir(self.masks_path))
+        else: 
+            self.image_files = image_files
+            self.mask_files  = mask_files
+        
         self.target_shape = self.arch_cfg.dataset.target_shape
         self.num_classes = self.arch_cfg.dataset.num_classes
-        self.transform = self._get_transforms()
 
-    def _init_paths(self):
-        self.images_path = f"{self.arch_cfg.dataset.base_path}{self.arch_cfg.dataset.images_subdir}"
-        self.masks_path = f"{self.arch_cfg.dataset.base_path}{self.arch_cfg.dataset.labels_subdir}"
-
-        assert os.path.exists(self.images_path), f"Images path not found: {self.images_path}"
-        assert os.path.exists(self.masks_path), f"Labels path not found: {self.masks_path}"
-        
-        self.image_files = sorted(os.listdir(self.images_path))
-        self.label_files = sorted(os.listdir(self.masks_path))
-        
-        assert len(self.image_files) == len(self.label_files), "Mismatch between image and label files!"
-
-    def _get_transforms(self):
-        # Common preprocessing for all phases
-        target_spacing = (1.0, 1.0, 1.0)  # Adjust if needed
-        common_transforms = [
-            tio.Resample(target_spacing),
-            tio.CropOrPad(self.target_shape, padding_mode='constant'),
-            tio.RescaleIntensity((0, 1), percentiles=(0.5, 99.5)),
-        ]
-
-        if self.phase == 'train':
-            common_transforms += [
-                # Spatial transforms (applied first)
-                tio.RandomFlip(axes=(0, 1, 2), p=0.3),  # 30% chance
-                # tio.RandomMotion(degrees=5, translation=5, p=0.3),
-                # tio.RandomGhosting(intensity=0.3, p=0.2),
-                # tio.RandomSpike(num_spikes=2, intensity=0.15, p=0.15),
-                # tio.RandomAffine(
-                #     scales=0.05, 
-                #     degrees=5, 
-                #     translation=3, 
-                #     p=0.4  # Explicitly set for affine
-                # ),
-                # tio.RandomElasticDeformation(
-                #     num_control_points=5,
-                #     max_displacement=8,
-                #     locked_borders=1,
-                #     p=0.3
-                # ),
-
-                # # Intensity transforms
-                tio.RandomNoise(std=0.01, p=0.2),
-                # tio.RandomBiasField(p=0.25),
-                # tio.RandomBlur(std=(0.25, 1.0), p=0.25),
-                # tio.RandomGamma(log_gamma=(-0.2, 0.2), p=0.25),
-            ]
-
-        return tio.Compose(common_transforms)
+        self.transform = AugmentationUtils.get_train_transforms(self.target_shape)
+        # if self.phase == "train":
+        #     self.transform = AugmentationUtils.get_train_transforms(self.target_shape)
+        # elif self.phase == "val":
+        #     self.transform = AugmentationUtils.get_validation_transforms()
+        # elif self.phase == 'test':
+        #     self.transform = AugmentationUtils.get_test_transforms()
 
     def __len__(self):
         return len(self.image_files)
     
     def load_img_and_gts(self, idx):
         image_path = os.path.join(self.images_path, self.image_files[idx])
-        image = nib.as_closest_canonical(nib.load(image_path)).get_fdata()  # [W, H, D]
+        image      = nib.as_closest_canonical(nib.load(image_path)).get_fdata()  # [W, H, D]
 
-        mask_path = os.path.join(self.masks_path, self.label_files[idx])
-        mask = nib.as_closest_canonical(nib.load(mask_path)).get_fdata()    # [W, H, D]
+        mask_path = os.path.join(self.masks_path, self.mask_files[idx])
+        mask      = nib.as_closest_canonical(nib.load(mask_path)).get_fdata()    # [W, H, D]
         return image, mask 
 
     
     def __getitem__(self, idx):
         image, mask = self.load_img_and_gts(idx)
-
-        #FIXME with multiscale, resizing is only in training, no longer in test if ms is enabled.
 
         # Add channel dim and create subject
         image = image[np.newaxis]

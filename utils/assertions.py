@@ -1,5 +1,5 @@
 from typing import Any, Iterable, Optional, Type
-
+import os
 from sympy import Union
 
 
@@ -27,3 +27,10 @@ def ensure_in(obj: Any, collection: Iterable, exc: Type[Exception], msg: Optiona
     """Check if our config is in a collection, raising specified exception if not"""
     if obj not in collection:
         raise exc(msg or f"Expected one of {collection}, got {obj}")
+
+def ensure_pexists(path: str, exc: Type[Exception], msg: Optional[str] = None) -> None:
+    """Check if a path exists, raising specified exception if not"""
+    if not os.path.exists(path):
+        raise exc(msg or f"Path does not exist: {path}")
+    
+    

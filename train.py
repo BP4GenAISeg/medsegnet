@@ -29,6 +29,7 @@ DATASET_MAPPING["Task05_Prostate"] = ProstateDataset
 def main(cfg: DictConfig):
   ensure_has_attrs(cfg, ["active_dataset", "active_architecture", "gpu"], Exception)
   seed = cfg.seed
+  print("The seed is ", seed)
   setup_seed(seed)
 
   unified_cfg = prepare_dataset_config(cfg)
@@ -53,9 +54,7 @@ def main(cfg: DictConfig):
     exit(1)
   
   dataset_class = DATASET_MAPPING[task_name]
-  full_dataset = dataset_class(unified_cfg, phase="train")
-
-  data_manager = DataManager(full_dataset, unified_cfg, seed, split_ratios=(0.80, 0.05, 0.15))
+  data_manager = DataManager(dataset_class, unified_cfg, seed, split_ratios=(0.80, 0.05, 0.15))
   train_dataloader, val_dataloader, test_dataloader = data_manager.get_dataloaders()
 
   wandb_logger = get_wandb_logger(config=cfg, model=model) 
@@ -90,9 +89,4 @@ def main(cfg: DictConfig):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train a medical segmentation model.")
-    parser.add_argument("--arch", "-aa", help="The active architecture to use.")
-    args = parser.parse_args()
-
-    # Pass the architecture argument to the Hydra configuration
     main()
