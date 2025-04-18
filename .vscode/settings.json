@@ -42,6 +42,7 @@
     }
   },
   "conventionalCommits.scopes": [
-    "training"
+    "training",
+    "multiscale"
   ],
 }
