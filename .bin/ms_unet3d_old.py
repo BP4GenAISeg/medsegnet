@@ -216,7 +216,7 @@ class TestUNet3D(ModelBase):
                              f"Expected one of: {list(shape_to_entry.keys())}")
 
         entry = shape_to_entry[rounded_shape]
-
+        
         if entry == 'enc1':
             enc1 = self.encoder1(x)
             pool1 = self.drop1(self.pool1(enc1))
@@ -227,7 +227,6 @@ class TestUNet3D(ModelBase):
             enc4 = self.encoder4(pool3)
             pool4 = self.drop4(self.pool4(enc4))
             bot = self.bottleneck(pool4)
-
 
             up4 = self.up4(bot)
             up4 = torch.cat([up4, enc4], dim=1)

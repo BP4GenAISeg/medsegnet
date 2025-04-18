@@ -35,7 +35,7 @@ class AugmentationUtils:
 
         augmentations = [
             tio.RandomFlip(axes=(0, 1, 2), p=0.3),
-            tio.RandomNoise(std=0.01, p=0.2),
+            # tio.RandomNoise(std=0.01, p=0.2), this one is a bit weird xD but check again, visualize it!! in inference.ipynb
         ]
 
         all_transforms_list = preprocessing_list + augmentations
