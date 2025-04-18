@@ -324,30 +324,6 @@ class MSUNet3D(ModelBase):
             raise ValueError(f"Unknown entry point in Multiscale UNet: {entry_gateway}")
        
        
-    # def _forward_inference(self, x: torch.Tensor):
-    #     D, H, W = x.shape[2:]
-    #     inp = (D, H, W)
-    #     base = (32, 64, 32)
-    #     def div_shape(s, f): return tuple(v // f for v in s)
-    #     mapping = {base: 0}
-    #     for d in range(1, self.depth):
-    #         mapping[div_shape(base, 2 ** d)] = d
-    #     rounded = tuple(2 ** round(np.log2(v)) for v in inp)
-    #     if rounded not in mapping:
-    #         raise ValueError(f"Unsupported shape {inp} rounded {rounded}")
-    #     idx = mapping[rounded]
-    #     # full or msb idx
-    #     if idx == 0:
-    #         segs, _ = self._forward_training(x)
-    #         return segs[0]
-    #     # downsample to ms scale
-    #     factor = 2 ** idx
-    #     tgt = (D // factor, H // factor, W // factor)
-    #     x_ms = F.interpolate(x, size=tgt, mode='trilinear', align_corners=True)
-    #     segs, _ = self._forward_training(x_ms)
-    #     ms = segs[idx]
-    #     return F.interpolate(ms, size=(D, H, W), mode='trilinear', align_corners=True)
-       
     def forward(self, x: torch.Tensor):
         if self.training:
             return self._forward_training(x)
