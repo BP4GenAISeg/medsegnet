@@ -110,6 +110,7 @@ def prepare_dataset_config(cfg: DictConfig) -> DictConfig:
         "training": merged_training,
         "dataset": cleaned_dataset_cfg,
         "tracking": cfg.get("tracking", OmegaConf.create({})),
+        "logging": cfg.get("logging"), # i want None otherwise, for better debugging
         "active_dataset": dataset_name,
         "active_architecture": arch_name
     })
@@ -159,21 +160,18 @@ def prepare_dataset_config(cfg: DictConfig) -> DictConfig:
 
 #     return unified_cfg
 
+DEFAULT_FMT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+DEFAULT_DATEFMT = "%Y-%m-%d %H:%M:%S"
+
 class RunManager:
-    def __init__(self,
-                 unified_cfg: DictConfig, 
-    ):
-        self.unified_cfg = unified_cfg 
-        # Derive names from the unified config if they exist
+    def __init__(self, unified_cfg: DictConfig):
+        self.unified_cfg = unified_cfg
         self.model_name = unified_cfg.get("active_architecture", "unknown_model")
         self.task_name = unified_cfg.get("active_dataset", "unknown_dataset")
 
         self.timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        # Define base experiment directory
         self.base_exp_dir = os.path.join("trained_models", self.model_name, self.task_name)
-        # Define specific run directory using timestamp
         self.run_exp_dir = os.path.join(self.base_exp_dir, self.timestamp)
-        # Define the path for the best model checkpoint early
         self.best_model_path = os.path.join(self.run_exp_dir, "best_model.pth")
 
         os.makedirs(self.run_exp_dir, exist_ok=True)
@@ -183,179 +181,104 @@ class RunManager:
         self.logger.info(f"Experiment directory: {self.run_exp_dir}")
 
     def __setup_logging(self):
-        """Set up logging to output.log file within the run directory"""
-        self.logger = logging.getLogger(f"{self.task_name}_{self.timestamp}") # Unique logger name per run
-        self.logger.setLevel(logging.INFO)
-        # Prevent logs from propagating to the root logger (important for multiple runs)
+        """Configure file and console logging based on unified_cfg.logging"""
+        logging_cfg = self.unified_cfg.get("logging", OmegaConf.create({}))
+        file_cfg = logging_cfg.get("file", {})
+        console_cfg = logging_cfg.get("console", {})
+
+        # Determine if file and console handlers should be added
+        file_enabled = file_cfg.get("level") is not None
+        console_enabled = console_cfg.get("level") is not None
+
+        # Pre-bind default handler settings to avoid unbound variable issues
+        # File defaults
+        file_level = getattr(logging, file_cfg.get("level", "INFO").upper(), logging.INFO)
+        file_fmt = file_cfg.get("format", DEFAULT_FMT)
+        file_datefmt = file_cfg.get("datefmt", DEFAULT_DATEFMT)
+
+        # Console defaults
+        console_level = getattr(logging, console_cfg.get("level", file_cfg.get("level", "INFO")).upper(), logging.INFO)
+        console_fmt = console_cfg.get("format", DEFAULT_FMT)
+        console_datefmt = console_cfg.get("datefmt", DEFAULT_DATEFMT)
+
+        # Create logger with no inherent threshold
+        logger_name = f"{self.task_name}_{self.timestamp}"
+        self.logger = logging.getLogger(logger_name)
+        self.logger.setLevel(logging.NOTSET)
         self.logger.propagate = False
 
-        # Remove existing handlers if any (e.g., during re-runs in notebooks)
-        while self.logger.handlers:
-             self.logger.removeHandler(self.logger.handlers[0])
+        # Clear existing handlers
+        for handler in list(self.logger.handlers):
+            self.logger.removeHandler(handler)
 
-        # File Handler
-        log_file = os.path.join(self.run_exp_dir, "output.log")
-        fh = logging.FileHandler(log_file)
-        fh.setLevel(logging.INFO)
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-        fh.setFormatter(formatter)
-        self.logger.addHandler(fh)
+        # Add file handler if enabled
+        if file_enabled:
+            file_handler = logging.FileHandler(os.path.join(self.run_exp_dir, "output.log"))
+            file_handler.setLevel(file_level)
+            file_handler.setFormatter(logging.Formatter(file_fmt, datefmt=file_datefmt))
+            self.logger.addHandler(file_handler)
+            self.logger.debug(f"File logging enabled at {logging.getLevelName(file_level)}")
 
-        self.logger.info("Logging setup complete.")
-    
+        # Add console handler if enabled
+        if console_enabled:
+            console_handler = logging.StreamHandler(sys.stdout)
+            console_handler.setLevel(console_level)
+            console_handler.setFormatter(logging.Formatter(console_fmt, datefmt=console_datefmt))
+            self.logger.addHandler(console_handler)
+            self.logger.debug(f"Console logging enabled at {logging.getLevelName(console_level)}")
+
+        self.logger.debug("Logging setup complete.")
+
     def __save_config(self):
-        """
-        Saves the unified configuration to the run's experiment directory.
-        """
         config_path = os.path.join(self.run_exp_dir, "config.yaml")
         try:
-            with open(config_path, "w") as f:
-                OmegaConf.save(self.unified_cfg, f)
-            self.logger.info(f"Unified configuration saved to {config_path}")
+            OmegaConf.save(self.unified_cfg, config_path)
+            self.logger.debug(f"Config saved to {config_path}")
         except Exception as e:
-            self.logger.error(f"Failed to save configuration to {config_path}: {e}")
+            self.logger.error(f"Failed saving config: {e}")
 
-
-    def save_model(self,
-                   model: torch.nn.Module,
-                   epoch: int,
-                   metric: float,
-                   optimizer: torch.optim.Optimizer | None = None, 
-                   scheduler: torch.optim.lr_scheduler._LRScheduler | None = None 
-        ) -> str:
-        """
-        Save the current best model checkpoint to disk (overwrites previous best_model.pth).
-        Includes model state, epoch, metric, and optionally optimizer/scheduler states.
-
-        Args:
-            model: The PyTorch model to save.
-            optimizer: The optimizer instance (optional).
-            scheduler: The learning rate scheduler instance (optional).
-            epoch: The epoch number at which this checkpoint is saved.
-            metric: The validation metric value (e.g., Dice score or loss) that makes this the best model so far.
-
-        Returns:
-            str: The path where the best model checkpoint was saved ('best_model.pth').
-        """
+    def save_model(self, model: torch.nn.Module, epoch: int, metric: float, optimizer=None, scheduler=None) -> str:
         checkpoint = {
             'epoch': epoch,
             'metric': metric,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict() if optimizer else None,
             'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
-            'config': OmegaConf.to_container(self.unified_cfg, resolve=True) 
+            'config': OmegaConf.to_container(self.unified_cfg, resolve=True)
         }
-
-        try:
-            torch.save(checkpoint, self.best_model_path)
-            self.logger.info(f"Best model checkpoint saved at epoch {epoch} with metric {metric:.4f} to: {self.best_model_path}")
-        except Exception as e:
-            self.logger.error(f"Failed to save checkpoint to {self.best_model_path}: {e}")
-            raise e # Re-raise the exception so the Trainer knows saving failed
-
+        torch.save(checkpoint, self.best_model_path)
+        self.logger.debug(f"Saved model at epoch={epoch}, metric={metric}")
         return self.best_model_path
 
-    def load_model(self,
-                   model: torch.nn.Module,
-                   optimizer: torch.optim.Optimizer | None = None, # Pass if resuming
-                   scheduler: torch.optim.lr_scheduler._LRScheduler | None = None, # Pass if resuming
-                   device: torch.device | str = 'cpu' # Device to load onto
-                   ) -> dict:
-        """
-        Load the best model checkpoint ('best_model.pth') from the run's directory.
-        Loads model state dict and optionally optimizer/scheduler states.
-
-        Args:
-            model: The PyTorch model instance (initialized architecture).
-            optimizer: The optimizer instance (optional, for resuming).
-            scheduler: The LR scheduler instance (optional, for resuming).
-            device: The device to map the loaded tensors to.
-
-        Returns:
-            dict: The loaded checkpoint dictionary (useful for retrieving epoch, metric etc.).
-
-        Raises:
-            FileNotFoundError: If the best_model.pth file does not exist.
-            KeyError: If the checkpoint dictionary is missing expected keys.
-            Exception: For other potential loading errors.
-        """
+    def load_model(self, model, optimizer=None, scheduler=None, device: str = 'cpu'):
         if not os.path.exists(self.best_model_path):
-            self.logger.error(f"Checkpoint file not found: {self.best_model_path}")
-            raise FileNotFoundError(f"Checkpoint file not found: {self.best_model_path}")
+            self.logger.error(f"No checkpoint at {self.best_model_path}")
+            raise FileNotFoundError(f"Checkpoint not found: {self.best_model_path}")
+        checkpoint = torch.load(self.best_model_path, map_location=device)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        if optimizer and checkpoint.get('optimizer_state_dict'):
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        if scheduler and checkpoint.get('scheduler_state_dict'):
+            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        epoch = checkpoint.get('epoch')
+        metric = checkpoint.get('metric')
+        self.logger.debug(f"Loaded model at epoch={epoch}, metric={metric}")
+        return checkpoint
 
-        try:
-            # Load checkpoint onto the specified device directly
-            checkpoint = torch.load(self.best_model_path, map_location=device)
-            self.logger.info(f"Loading checkpoint from: {self.best_model_path}")
+    def get_best_model_path(self) -> Optional[str]:
+        return self.best_model_path if os.path.exists(self.best_model_path) else None
 
-            # Load model state
-            if 'model_state_dict' in checkpoint:
-                model.load_state_dict(checkpoint['model_state_dict'])
-                self.logger.info("Model state_dict loaded successfully.")
-            else:
-                raise KeyError("Checkpoint dictionary missing 'model_state_dict'.")
 
-            # Load optimizer state if provided and available
-            if optimizer and 'optimizer_state_dict' in checkpoint and checkpoint['optimizer_state_dict']:
-                optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-                self.logger.info("Optimizer state_dict loaded successfully.")
-            elif optimizer:
-                self.logger.warning("Optimizer state_dict not found or empty in checkpoint, optimizer not loaded.")
-
-            # Load scheduler state if provided and available
-            if scheduler and 'scheduler_state_dict' in checkpoint and checkpoint['scheduler_state_dict']:
-                scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-                self.logger.info("Scheduler state_dict loaded successfully.")
-            elif scheduler:
-                self.logger.warning("Scheduler state_dict not found or empty in checkpoint, scheduler not loaded.")
-
-            epoch = checkpoint.get('epoch', -1)
-            metric = checkpoint.get('metric', float('nan'))
-            self.logger.info(f"Checkpoint loaded from epoch {epoch} with metric {metric:.4f}")
-
-            return checkpoint
-
-        except Exception as e:
-            self.logger.error(f"Failed to load checkpoint from {self.best_model_path}: {e}")
-            raise e # Re-raise the exception
-
-    def get_best_model_path(self) -> str | None:
-        """
-        Returns the path to the best model checkpoint file ('best_model.pth').
-        Checks if the file actually exists.
-
-        Returns:
-            str | None: The path if the file exists, otherwise None.
-        """
-        if os.path.exists(self.best_model_path):
-            return self.best_model_path
-        else:
-            self.logger.warning(f"Best model path requested, but file not found: {self.best_model_path}")
-            return None
-
-    # --- Logging methods ---
-    def info(self, message: str, stdout: bool = False):
-        """Log a message"""
-        if stdout:
-            print(message)
-        self.logger.info(message)
-
-    def warning(self, message: str, stdout: bool = False):
-        """Log a warning"""
-        if stdout:
-            print(f"WARNING: {message}") # Make warnings more visible on console
-        self.logger.warning(message)
-
-    def error(self, message: str, stdout: bool = False):
-        """Log an error"""
-        if stdout:
-            print(f"ERROR: {message}", file=sys.stderr) # Print errors to stderr
-        self.logger.error(message)
-
+    # simple wrappers
+    def info(self, msg):    self.logger.info(msg)
+    def warning(self, msg): self.logger.warning(msg)
+    def error(self, msg):   self.logger.error(msg)
+    def debug(self, msg):   self.logger.debug(msg)
+    def critical(self, msg):self.logger.critical(msg)
     def close_loggers(self):
         """Close all logging handlers."""
         self.logger.info("Closing log handlers.")
-        handlers = self.logger.handlers[:]
-        for handler in handlers:
+        for handler in list(self.logger.handlers):
             handler.close()
             self.logger.removeHandler(handler)
+        self.logger.info("Log handlers closed.")

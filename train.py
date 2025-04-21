@@ -50,7 +50,7 @@ def main(cfg: DictConfig):
   try: 
     optimizer = hydra.utils.instantiate(unified_cfg.training.optimizer, params=model.parameters())
   except Exception as e:
-    run_manager.error(f"Failed to instantiate optimizer: {e}", stdout=True)
+    run_manager.error(f"Failed to instantiate optimizer: {e}")
     exit(1)
   
   dataset_class = DATASET_MAPPING[task_name]
@@ -64,7 +64,7 @@ def main(cfg: DictConfig):
     try: 
       lr_scheduler = hydra.utils.instantiate(unified_cfg.training.scheduler, optimizer=optimizer)
     except Exception as e:
-      run_manager.error(f"Failed to instantiate scheduler: {e}", stdout=True)
+      run_manager.error(f"Failed to instantiate scheduler: {e}")
 
   trainer = Trainer(
       unified_cfg, model, train_dataloader, val_dataloader, test_dataloader,

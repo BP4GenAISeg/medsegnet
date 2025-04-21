@@ -44,11 +44,10 @@ class AugmentationUtils:
 
         
     @staticmethod
-    def get_validation_transforms(rescale_percentiles=(0.5, 99.5)):
-        print("[IMPORTANT]: currently using the same transforms for validation and test.")
-        # target_shape = (32, 64, 32) #full resolution
-        target_shape = (16, 32, 16) #half resolution
-        
+    def get_validation_transforms(
+        target_shape,
+        rescale_percentiles=(0.5, 99.5)
+    ):
         transforms = [
             tio.RescaleIntensity((0, 1), percentiles=rescale_percentiles),
             tio.CropOrPad(target_shape, padding_mode='constant'),
@@ -57,7 +56,8 @@ class AugmentationUtils:
     
     @staticmethod
     def get_test_transforms(
+        target_shape,
         rescale_percentiles=(0.5, 99.5)
     ):
         # For now, they're the same.
-        return AugmentationUtils.get_validation_transforms(rescale_percentiles)
+        return AugmentationUtils.get_validation_transforms(target_shape, rescale_percentiles)

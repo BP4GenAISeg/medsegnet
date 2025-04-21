@@ -1,8 +1,25 @@
 # Hardware settings (applies globally)
 gpu:
   mode: "single"         # Options: "single", "multi"
-  devices: [1]           # e.g., [0, 1, 2, 3] for multi-GPU
+  devices: [0]           # e.g., [0, 1, 2, 3] for multi-GPU
   backend: "nccl"        # "nccl" for GPU, "gloo" for CPU
+
+logging:
+  #   critical  # 50: only the most severe (critical) messages
+  #   error     # 40: errors and critical
+  #   warning   # 30: warnings, errors, critical
+  #   info      # 20: info, warnings, errors, critical
+  #   debug     # 10: debug, info, warnings, errors, critical
+  #   notset    # 0: no filtering (all messages pass through)
+  #placeholders url for format: https://docs.python.org/3/library/logging.html#logrecord-attributes
+  file: 
+    level: "debug"  # normal is warning or error :)      
+    format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+  console:
+    level:   "info"
+    format:  "%(asctime)s - [%(levelname)s]: %(message)s"
+    datefmt: "%H:%M:%S" 
 
 # Logging settings
 tracking:
@@ -12,8 +29,6 @@ tracking:
   # Then its really use to compare in graphs between runs
   run_name: "unet_pat_7_${now:%Y-%m-%d_%H-%M-%S}" 
   
-
-
 # -- Active architechture selection --
 active_architecture: ms-unet3d
 
@@ -146,7 +161,6 @@ datasets:
         dropout: 0.3
         drop_last: false
       model: 
-        depth: 4
         n_filters: 8
         deep_supervision:
           enabled: true

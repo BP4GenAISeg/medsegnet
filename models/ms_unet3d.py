@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from models import register_model
 from models.base import ModelBase
 from models.config_utils import get_common_args
-from utils.inference import compute_weights_depth
+from utils.inference import call_fusion_fn, compute_weights_depth
 import numpy as np
 import torchio as tio
 
@@ -148,7 +148,7 @@ class MSUNet3D(ModelBase):
         
         # Copying as we will pop() encoder_feats in decoder, 
         # but still need the encoder features for consistency loss.
-        full_feats = list(encoder_feats)
+        full_enc_feats = list(encoder_feats)
         
         # Center
         center_out = self.bn(out)
@@ -215,7 +215,7 @@ class MSUNet3D(ModelBase):
             ms_outputs.append(ms_seg)
         
         segmentations = (final_out, *ms_outputs)
-        consistency_pairs = tuple(zip(full_feats[1:], msb_feats))
+        consistency_pairs = tuple(zip(msb_feats, full_enc_feats[1:]))
         return segmentations, consistency_pairs
     
         # if self.ds and (self.training or self.inference_fusion_mode != 'only_final'):
@@ -237,13 +237,11 @@ class MSUNet3D(ModelBase):
         # else:
         #     return (final,)
 
+
     def _forward_inference(self, x: torch.Tensor):
         D, H, W = x.shape[2:]
         input_shape = (D, H, W)
         base_shape = (32, 64, 32) 
-        print("")
-        print("[INFERENCE]: input shape: ", input_shape)
-        print()
         
         def div_shape(shape, factor):
             return tuple(s // factor for s in shape)
