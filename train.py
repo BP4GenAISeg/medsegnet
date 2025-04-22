@@ -10,12 +10,13 @@ from trainer_multiscale import Trainer
 from data.datasets import MedicalDecathlonDataset, VALID_TASKS, ProstateDataset, BrainTumourDataset
 from utils.assertions import ensure_has_attr, ensure_has_attrs
 from utils.losses import get_loss_fn
-from utils.utils import RunManager, prepare_dataset_config, setup_seed
+from utils.utils import RunManager, prepare_dataset_config, setup_logging, setup_seed
 import random
 import numpy as np
 from models.factory import create_model
 from utils.wandb_logger import get_wandb_logger
 import argparse
+import logging 
 
 EXCLUDED_TASKS = {"Task01_BrainTumour", "Task05_Prostate"}
 DATASET_MAPPING = {task: MedicalDecathlonDataset for task in VALID_TASKS - EXCLUDED_TASKS}
@@ -39,7 +40,10 @@ def main(cfg: DictConfig):
   assert task_name in DATASET_MAPPING , f"Unknown dataset: {task_name}"
 
   run_manager = RunManager(unified_cfg)
+  setup_logging(unified_cfg.get('logging', {}), run_manager.run_exp_dir)
 
+  logger = logging.getLogger(__name__)
+  
   gpu_device = cfg.gpu.devices[0] #TODO: Handle multiple GPUs
   device = torch.device(f"cuda:{gpu_device}") if torch.cuda.is_available() else torch.device("cpu")
   
@@ -50,7 +54,7 @@ def main(cfg: DictConfig):
   try: 
     optimizer = hydra.utils.instantiate(unified_cfg.training.optimizer, params=model.parameters())
   except Exception as e:
-    run_manager.error(f"Failed to instantiate optimizer: {e}")
+    logger.error(f"Failed to instantiate optimizer: {e}")
     exit(1)
   
   dataset_class = DATASET_MAPPING[task_name]
@@ -64,7 +68,7 @@ def main(cfg: DictConfig):
     try: 
       lr_scheduler = hydra.utils.instantiate(unified_cfg.training.scheduler, optimizer=optimizer)
     except Exception as e:
-      run_manager.error(f"Failed to instantiate scheduler: {e}")
+      logger.error(f"Failed to instantiate scheduler: {e}")
 
   trainer = Trainer(
       unified_cfg, model, train_dataloader, val_dataloader, test_dataloader,
@@ -76,15 +80,13 @@ def main(cfg: DictConfig):
     trainer.train()
     trainer.test()
   except Exception as e:
-    run_manager.error(f"Training failed: {e}")
+    logger.error(f"Training failed: {e}")
     final_status_code = 1
   finally:
     if wandb_logger: 
       wandb_logger.finalize(exit_code=final_status_code)
-    run_manager.info("Training completed.")
+    logger.info("Training completed.")
 
-    if run_manager:
-      run_manager.close_loggers()
 
 
 

@@ -13,12 +13,12 @@ logging:
   #   notset    # 0: no filtering (all messages pass through)
   #placeholders url for format: https://docs.python.org/3/library/logging.html#logrecord-attributes
   file: 
-    level: "debug"  # normal is warning or error :)      
+    level: "debug"       
     format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     datefmt: "%Y-%m-%d %H:%M:%S"
   console:
-    level:   "info"
-    format:  "%(asctime)s - [%(levelname)s]: %(message)s"
+    level:   "debug" 
+    format:  "[%(levelname)s]: %(message)s"
     datefmt: "%H:%M:%S" 
 
 # Logging settings

@@ -63,18 +63,21 @@ class MSUNet3D(ModelBase):
         self.encoders: nn.ModuleList = nn.ModuleList()
         self.pools: nn.ModuleList = nn.ModuleList()
         self.enc_dropouts: nn.ModuleList = nn.ModuleList()
+        print("----Full resolution----")
         for d in range(depth):
             in_ch = in_channels if d == 0 else n_filters * (2 ** (d - 1))
             out_ch = n_filters * (2 ** d)
             self.encoders.append(ConvBlock(in_ch, out_ch, batch_norm=batch_norm))
             self.pools.append(nn.MaxPool3d(kernel_size=2, stride=2))
             self.enc_dropouts.append(nn.Dropout3d(dropout))
+            print(f"in: {in_ch}\t\tout: {out_ch}")
             
         
         # Bottleneck layer (center block, bottom of the U-Net).
         bn_in_channels  = n_filters * (2 ** (depth - 1))
         bn_out_channels = n_filters * (2 ** depth)
         self.bn         = ConvBlock(bn_in_channels, bn_out_channels, batch_norm=batch_norm)
+        print(f"b_in: {bn_in_channels}\tb_out: {bn_out_channels}")
         
         # Build the decoder pathway dynamically
         self.up_convs = nn.ModuleList()
@@ -92,11 +95,16 @@ class MSUNet3D(ModelBase):
                 ConvBlock(in_ch, out_ch, batch_norm=batch_norm)
             )
             self.dec_dropouts.append(nn.Dropout3d(dropout))
+            print(f"in: {in_ch}\t\tout: {out_ch}")
 
         # Final layer convolution to map to the number of classes.
         self.final_conv = nn.Conv3d(n_filters, num_classes, kernel_size=1)
         
+        print(f"f_in: {n_filters}\t\tf_out: {num_classes}")
+
         
+        
+        print("-----MS resolution-----")
         # ===== Multiscale Input Blocks =====
         # one MSB per downsampling level (excluding full resolution)
         self.msb_blocks = nn.ModuleList()
@@ -105,12 +113,14 @@ class MSUNet3D(ModelBase):
             self.msb_blocks.append(
                 ConvBlock(in_channels, n_filters * (2 ** k), batch_norm=batch_norm)
             )
+            print(f"in: {in_channels}\t\tout: {n_filters * (2 ** k)}")
             # 1x1 head to produce segmentation at that scale,
             # otherwise, we'd just have n_filters * (2 ** k) channels/feature maps for output
             # when we want num_classes
             self.ms_heads.append(
                 nn.Conv3d(n_filters * (2 ** k), num_classes, kernel_size=1)
             )
+        print("-----------------------")
                
         # # Deep supervision branches:
         # # We attach deep supervision branches to the first few decoder blocks.
@@ -315,7 +325,7 @@ class MSUNet3D(ModelBase):
                 out = torch.cat([out, skip], dim=1)
                 out = dec(out)
                 out = drop(out)
-
+            
             final_out = self.ms_heads[level-1](out) #ms_heads not final_conv
             return final_out
         else:

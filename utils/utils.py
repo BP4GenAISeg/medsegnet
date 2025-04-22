@@ -110,7 +110,7 @@ def prepare_dataset_config(cfg: DictConfig) -> DictConfig:
         "training": merged_training,
         "dataset": cleaned_dataset_cfg,
         "tracking": cfg.get("tracking", OmegaConf.create({})),
-        "logging": cfg.get("logging"), # i want None otherwise, for better debugging
+        "logging": cfg.get("logging", OmegaConf.create({})), 
         "active_dataset": dataset_name,
         "active_architecture": arch_name
     })
@@ -160,9 +160,61 @@ def prepare_dataset_config(cfg: DictConfig) -> DictConfig:
 
 #     return unified_cfg
 
-DEFAULT_FMT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+# logging_setup.py
+
+import logging, os, sys
+from omegaconf import DictConfig
+
+DEFAULT_FMT     = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 DEFAULT_DATEFMT = "%Y-%m-%d %H:%M:%S"
 
+# module‐level guard
+_is_logging_configured = False
+def setup_logging(logging_cfg: DictConfig, run_exp_dir: str):
+    """
+    Call this exactly once per process (e.g. from RunManager.__init__).
+    Subsequent calls are no‐ops.
+    """
+    global _is_logging_configured
+    if _is_logging_configured:
+        return
+    root = logging.getLogger()
+    root.setLevel(logging.NOTSET)
+    root.propagate = False
+
+    file_cfg    = logging_cfg.get("file", {})
+    console_cfg = logging_cfg.get("console", {})
+
+    file_enabled    = file_cfg.get("level")    is not None
+    console_enabled = console_cfg.get("level") is not None
+
+    # File handler
+    if file_enabled:
+        lvl = getattr(logging, file_cfg["level"].upper(), logging.INFO)
+        fh  = logging.FileHandler(os.path.join(run_exp_dir, "output.log"))
+        fh.setLevel(lvl)
+        fh.setFormatter(logging.Formatter(
+            file_cfg.get("format", DEFAULT_FMT),
+            datefmt=file_cfg.get("datefmt", DEFAULT_DATEFMT)
+        ))
+        root.addHandler(fh)
+        root.debug(f"File logging enabled at {file_cfg['level']}")
+
+    # Console handler
+    if console_enabled:
+        lvl = getattr(logging, console_cfg["level"].upper(), logging.INFO)
+        ch  = logging.StreamHandler(sys.stdout)
+        ch.setLevel(lvl)
+        ch.setFormatter(logging.Formatter(
+            console_cfg.get("format", DEFAULT_FMT),
+            datefmt=console_cfg.get("datefmt", DEFAULT_DATEFMT)
+        ))
+        root.addHandler(ch)
+        root.debug(f"Console logging enabled at {console_cfg['level']}")
+
+    _is_logging_configured = True
+    root.debug("Root logger configuration complete.")
+    
 class RunManager:
     def __init__(self, unified_cfg: DictConfig):
         self.unified_cfg = unified_cfg
@@ -173,61 +225,12 @@ class RunManager:
         self.base_exp_dir = os.path.join("trained_models", self.model_name, self.task_name)
         self.run_exp_dir = os.path.join(self.base_exp_dir, self.timestamp)
         self.best_model_path = os.path.join(self.run_exp_dir, "best_model.pth")
-
+        self.logger = logging.getLogger(f"{self.task_name}_{self.timestamp}")
+        
         os.makedirs(self.run_exp_dir, exist_ok=True)
-        self.__setup_logging()
         self.__save_config()
         self.logger.info(f"RunManager initialized for {self.model_name} on {self.task_name}.")
         self.logger.info(f"Experiment directory: {self.run_exp_dir}")
-
-    def __setup_logging(self):
-        """Configure file and console logging based on unified_cfg.logging"""
-        logging_cfg = self.unified_cfg.get("logging", OmegaConf.create({}))
-        file_cfg = logging_cfg.get("file", {})
-        console_cfg = logging_cfg.get("console", {})
-
-        # Determine if file and console handlers should be added
-        file_enabled = file_cfg.get("level") is not None
-        console_enabled = console_cfg.get("level") is not None
-
-        # Pre-bind default handler settings to avoid unbound variable issues
-        # File defaults
-        file_level = getattr(logging, file_cfg.get("level", "INFO").upper(), logging.INFO)
-        file_fmt = file_cfg.get("format", DEFAULT_FMT)
-        file_datefmt = file_cfg.get("datefmt", DEFAULT_DATEFMT)
-
-        # Console defaults
-        console_level = getattr(logging, console_cfg.get("level", file_cfg.get("level", "INFO")).upper(), logging.INFO)
-        console_fmt = console_cfg.get("format", DEFAULT_FMT)
-        console_datefmt = console_cfg.get("datefmt", DEFAULT_DATEFMT)
-
-        # Create logger with no inherent threshold
-        logger_name = f"{self.task_name}_{self.timestamp}"
-        self.logger = logging.getLogger(logger_name)
-        self.logger.setLevel(logging.NOTSET)
-        self.logger.propagate = False
-
-        # Clear existing handlers
-        for handler in list(self.logger.handlers):
-            self.logger.removeHandler(handler)
-
-        # Add file handler if enabled
-        if file_enabled:
-            file_handler = logging.FileHandler(os.path.join(self.run_exp_dir, "output.log"))
-            file_handler.setLevel(file_level)
-            file_handler.setFormatter(logging.Formatter(file_fmt, datefmt=file_datefmt))
-            self.logger.addHandler(file_handler)
-            self.logger.debug(f"File logging enabled at {logging.getLevelName(file_level)}")
-
-        # Add console handler if enabled
-        if console_enabled:
-            console_handler = logging.StreamHandler(sys.stdout)
-            console_handler.setLevel(console_level)
-            console_handler.setFormatter(logging.Formatter(console_fmt, datefmt=console_datefmt))
-            self.logger.addHandler(console_handler)
-            self.logger.debug(f"Console logging enabled at {logging.getLevelName(console_level)}")
-
-        self.logger.debug("Logging setup complete.")
 
     def __save_config(self):
         config_path = os.path.join(self.run_exp_dir, "config.yaml")
@@ -269,16 +272,4 @@ class RunManager:
         return self.best_model_path if os.path.exists(self.best_model_path) else None
 
 
-    # simple wrappers
-    def info(self, msg):    self.logger.info(msg)
-    def warning(self, msg): self.logger.warning(msg)
-    def error(self, msg):   self.logger.error(msg)
-    def debug(self, msg):   self.logger.debug(msg)
-    def critical(self, msg):self.logger.critical(msg)
-    def close_loggers(self):
-        """Close all logging handlers."""
-        self.logger.info("Closing log handlers.")
-        for handler in list(self.logger.handlers):
-            handler.close()
-            self.logger.removeHandler(handler)
-        self.logger.info("Log handlers closed.")
+    # sim

@@ -15,6 +15,7 @@ from utils.utils import RunManager
 from utils.wandb_logger import WandBLogger
 from torch.nn.utils.clip_grad import clip_grad_norm_
 import torch.nn.functional as F
+import logging
 class Trainer:
     def __init__(
             self, 
@@ -40,6 +41,7 @@ class Trainer:
             self.lr_scheduler = lr_scheduler
             self.device = device
             self.rm = run_manager
+            self.logging = logging.getLogger(__name__)
             self.wandb_logger = wandb_logger
             
             self.best_val_loss = float('inf')
@@ -139,6 +141,10 @@ class Trainer:
                 
                 loss.backward()
 
+                self.rm.info(f"[grad] - {self.model.ms_heads}")
+                self.rm.info(f"[grad] - {self.model.ms_heads[0]}")
+                
+                
                 clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                 self.optimizer.step()
                 
