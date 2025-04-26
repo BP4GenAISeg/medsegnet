@@ -25,7 +25,7 @@ class ConvBlock(nn.Module):
     def forward(self, x):
         return self.conv(x)
 
-@register_model("unet3d")
+@register_model("ds-unet3d")
 class UNet3D(ModelBase):
     """
     A dynamic 3D U-Net that can adapt its depth based on the input parameter.

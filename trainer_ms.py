@@ -71,13 +71,6 @@ class Trainer:
                     self.logger.error(f"Error initializing EarlyStopping: {e}. Disabling.")
                     self.early_stopper = None
 
-            # --- Awaken Consistency Config ---
-            self.awaken_cfg = unified_cfg.model.get('awaken_consistency', {'enabled': False})
-            self.awaken_enabled = self.awaken_cfg.get('enabled', False)
-            self.awaken_epoch = self.awaken_cfg.get('num_epoch_awakening', float('inf')) # Default to never awaken if not set
-            self.network_frozen_for_consistency = False # Track state
-            # --- End Awaken Consistency Config ---
-
 
             self.num_epochs = unified_cfg.training.num_epochs
             self.num_classes = unified_cfg.dataset.num_classes
@@ -105,38 +98,6 @@ class Trainer:
         tc.reset()
         tc.update({'ep': epoch})            
 
-        # --- Determine if consistency should be awakened this epoch ---
-        should_awaken_consistency = self.awaken_enabled and epoch >= self.awaken_epoch
-        awaken_consistency_weight = 1.0 if should_awaken_consistency else 0.0
-        segmentation_weight = 1.0 - awaken_consistency_weight
-        # --- End Consistency Check ---
-
-        # --- Manage Network Freezing ---
-        if should_awaken_consistency and not self.network_frozen_for_consistency:
-            # Freeze all parameters except MSB blocks
-            for name, param in self.model.named_parameters():
-                if 'msb_blocks' not in name:
-                    param.requires_grad = False
-                else:
-                    param.requires_grad = True # Ensure MSB blocks are trainable
-            self.network_frozen_for_consistency = True
-            self.logger.info(f"Epoch {epoch+1}: Awakening consistency. Freezing network except MSB blocks.")
-            # Re-initialize optimizer with only trainable parameters if necessary, 
-            # or ensure the optimizer handles requires_grad=False correctly.
-            # AdamW typically handles this, but good to be aware.
-            # Example: self.optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, self.model.parameters()), ...) 
-            # Note: Re-initializing optimizer might reset its state (like momentum). Consider adjusting learning rate.
-            
-        elif not should_awaken_consistency and self.network_frozen_for_consistency:
-            # Unfreeze the network if consistency is no longer active (e.g., if logic changes)
-            for param in self.model.parameters():
-                param.requires_grad = True
-            self.network_frozen_for_consistency = False
-            self.logger.info(f"Epoch {epoch+1}: Deactivating consistency. Unfreezing entire network.")
-            # Re-initialize optimizer or ensure it adapts.
-        # --- End Network Freezing ---
-
-
         try:
             for batch_idx, (images, masks) in enumerate(
                 tqdm(self.train_dataloader, desc=f"Epoch {epoch+1}/{self.num_epochs} [Train]", leave=False)
@@ -148,45 +109,47 @@ class Trainer:
                 # Forward pass                
                 segs, cons_pairs = self.model(images)
 
-                # --- Calculate Segmentation Loss (Deep Supervision) ---
-                weights = compute_weights_depth(len(segs), "linear")
+                weights = [1.0 / len(segs)] * len(segs)
                 
                 seg_losses: List[Tuple[float, torch.Tensor]] = []
                 down_masks: List[torch.Tensor] = []
-                for seg_idx, seg in enumerate(segs):
-                    # Downsample mask to match prediction size
+                for seg in segs:
                     gt = F.interpolate(
                         masks.unsqueeze(1).float(), size=seg.shape[2:], mode='nearest'
                     ).squeeze(1).long()
-                    down_masks.append(gt)
                     
-                    # Calculate loss for this level
-                    loss = self.criterion(seg, gt)
-                    seg_losses.append((weights[seg_idx], loss))
+                    down_masks.append(gt)
+
+                for w, pred, gt in zip(weights, segs, down_masks):
+                    loss = self.criterion(pred, gt)
+                    seg_losses.append((w, loss))
 
                 seg_loss:torch.Tensor = torch.tensor(0.0, device=self.device)
                 for w, loss in seg_losses:
                     seg_loss += w * loss
-                # --- End Segmentation Loss ---
                 
-                # --- Calculate Consistency Loss ---
-                cons_losses: List[torch.Tensor] = []
-                if cons_pairs: # Only calculate if consistency pairs are returned
-                    cons_losses = [
-                        F.mse_loss(ms_feats, enc_feats.detach()) # Detach encoder features
-                        for ms_feats, enc_feats in cons_pairs
-                    ]
+                cons_losses: List[torch.Tensor] = [
+                    F.mse_loss(ms_feats, enc_feats.detach())
+                    for ms_feats, enc_feats in cons_pairs
+                ]
                 
                 cons_loss = torch.tensor(0.0, device=self.device)
-                # Use same weights as segmentation for consistency loss levels
-                for w, loss in zip(weights[:len(cons_losses)], cons_losses): # Ensure weights match available losses
+                for w, loss in zip(weights, cons_losses):
                     cons_loss += w * loss
-                # --- End Consistency Loss ---
 
-                # --- Combine Losses based on Awaken State ---
-                loss = seg_loss * segmentation_weight + cons_loss * awaken_consistency_weight
-                # --- End Combine Losses ---
+                # network_frozen = False
+                # awaken_consistency = torch.tensor(float(epoch > 60), device=self.device, requires_grad=False) #technically dont need require grad as we disable all below but :D yolo
+                # if awaken_consistency and not network_frozen:
+                #     network_frozen = True
+                #     for param in self.model.parameters():
+                #         param.requires_grad = False
+                #     for param in self.model.msb_blocks.parameters():
+                #         param.requires_grad = True
+                #     self.logger.debug("Model parameters are frozen except for MSB blocks.")
+                # self.logger.debug(f"awaken_consistency: {awaken_consistency}")
+                # loss = segmentation_loss * (1.0 - awaken_consistency) + consistency_loss * awaken_consistency
 
+                loss = seg_loss + cons_loss 
 
                 # --- compute dice metrics per segmentation head ---
                 dice_vals = []
@@ -211,15 +174,14 @@ class Trainer:
                 })               
                 
                 if torch.isnan(loss) or torch.isinf(loss):
-                    self.logger.warning(f"Loss is NaN or Inf at epoch {epoch}. Skipping batch {batch_idx}.")
+                    self.logger.warning(f"Loss is NaN or Inf at epoch {epoch}. Skipping batch.")
                     tc.skip()
                     if self.wandb_logger:
                         self.wandb_logger.log_metrics({"train/skipped_batches": 1}, step=epoch, commit=False) 
                     continue
                 
                 loss.backward()
-                # Optional: Gradient clipping
-                clip_grad_norm_(filter(lambda p: p.requires_grad, self.model.parameters()), max_norm=1.0) 
+                clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                 self.optimizer.step()
                 
                 # progress_bar.set_postfix(batch_loss=batch_loss)
@@ -230,6 +192,17 @@ class Trainer:
                 self.wandb_logger.log_metrics({"train/skipped_batches": 1}, step=epoch)
             raise e
         
+        # # --- Log epoch summary metrics to WandB ---
+        # if self.wandb_logger:
+        #     log_data = {
+        #         'train/epoch_loss': avg_train_loss,
+        #         'epoch': epoch,
+        #         'learning_rate': self.optimizer.param_groups[0]['lr'] # Log LR per epoch
+        #     }
+        #     # current_weights = self.model.get_ds_weights()
+        #     # self.wandb_logger.log_weights(current_weights, step=epoch) 
+        #     self.wandb_logger.log_metrics(log_data, step=epoch)       
+        #     # --- End of WandB logging ---
 
         # Step the LR scheduler if it exists (usually done per epoch)
         if self.lr_scheduler:
@@ -256,18 +229,27 @@ class Trainer:
             for epoch in pbar:
                 epoch_start_time = time.time()
 
+                # train_dict = self.train_one_epoch(epoch)
+                # val_dict = self.validate(epoch)
+
                 train_dict = self.train_one_epoch(epoch)
-                val_dict   = self.validate(epoch)
-                table      = print_train_val_table(train_dict, val_dict)
-                
+                table = print_train_val_table(train_dict, {})
                 pbar.write("")          
                 pbar.write(table)        
                 
                 self.logger.info(f"Epoch {epoch+1} Training Summary:\n{table}") 
-                 
+               
+                val_loss, val_dice, val_dice_per_class = self.validate(epoch)
+                
                 epoch_duration = time.time() - epoch_start_time
 
-                train_dict['time'] = val_dict['time'] = epoch_duration
+                # train_dict['time'] = val_dict['time'] = epoch_duration
+
+                # self.logger.info(
+                #     f"Epoch [{epoch+1}/{num_epochs}] | Time: {epoch_duration:.2f}s | "
+                #     f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Val Dice: {val_dice:.4f} | "
+                #     f"Val Dice per Class: {val_dice_per_class}"
+                # )
 
                 # --- Log Epoch Timing ---
                 if self.wandb_logger:
@@ -327,13 +309,14 @@ class Trainer:
 
         logged_images = False # Flag to log images only once per epoch  
 
-        progress_bar = tqdm(self.val_dataloader, 
-                                          desc=f"Epoch {epoch+1}/{self.num_epochs} [Validate]", 
-                                          leave=False)
+        progress_bar = 
 
         with torch.no_grad():
             try:
-                for images, masks in progress_bar:
+                for images, masks in tqdm(self.val_dataloader, 
+                                          desc=f"Epoch {epoch+1}/{self.num_epochs} [Validate]", 
+                                          leave=False
+                    ):
                     images, masks = images.to(self.device), masks.to(self.device)
                     
                     # print(f"[DEBUG validate] Batch {batch_idx} Image Shape: {images.shape}") # -- ADD

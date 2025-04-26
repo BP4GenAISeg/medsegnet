@@ -59,7 +59,6 @@ class MSUNet3D(ModelBase):
         # self.ds_levels = min(deep_supervision_levels, depth) 
         # print("depth of the model: ", depth)
         # print("deep supervision levels: ", self.ds_levels)
-
         # Build the encoder pathway dynamically
         self.encoders: nn.ModuleList = nn.ModuleList()
         self.pools: nn.ModuleList = nn.ModuleList()
