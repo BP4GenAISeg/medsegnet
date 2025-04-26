@@ -4,6 +4,7 @@ gpu:
   devices: [0]           # e.g., [0, 1, 2, 3] for multi-GPU
   backend: "nccl"        # "nccl" for GPU, "gloo" for CPU
 
+# -- Logging settings --
 logging:
   #   critical  # 50: only the most severe (critical) messages
   #   error     # 40: errors and critical
@@ -17,17 +18,17 @@ logging:
     format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     datefmt: "%Y-%m-%d %H:%M:%S"
   console:
-    level:   "debug" 
+    level:   "info" 
     format:  "[%(levelname)s]: %(message)s"
     datefmt: "%H:%M:%S" 
 
-# Logging settings
+# -- Wandb settings --
 tracking:
   log_to_wandb: false 
   wandb_project: "MedicalSegmentation" 
   # Dynamic name, so like "unet_lr_1e-4_wd_1e-7_{date}"
   # Then its really use to compare in graphs between runs
-  run_name: "unet_pat_7_${now:%Y-%m-%d_%H-%M-%S}" 
+  run_name: "unet_awk_80_${now:%Y-%m-%d_%H-%M-%S}" 
   
 # -- Active architechture selection --
 active_architecture: ms-unet3d
@@ -37,11 +38,10 @@ active_architecture: ms-unet3d
 active_dataset: Task04_Hippocampus
 # active_dataset: Task09_Spleen
 
-# 42 is our defualt seed, so most of the code is decently reproduceable with 42
+# -- Seed settings --
 seed: 42 # None for no seed and integer for a numbered seed
 
-
-# Model storage
+# -- Storage settings--
 trained_models:
   base_dir: "trained_models"
 
@@ -51,8 +51,11 @@ trained_models:
 # *  The following settings are defaults and will be overwritten by    *
 # *  dataset-specific overrides.                                       *
 # **********************************************************************
+# -- Model architecture settings --
+# The model architecture settings are defined here. You can add new 
+
 architectures:
-  ms-unet3d:
+  backbone-unet3d: &backbone-unet
     model_defaults:                         # Only configuration for the model
       depth: 4         
       in_channels: 1
@@ -61,7 +64,7 @@ architectures:
         enabled: true                       # Training with deep supervision
         multi_scaling: true                 # 
         levels: 3
-        inference_fusion_mode: 'only_final' # Options: 'weighted_softmax', 'weighted_majority', 'only_final'
+        output_fusion_mode: 'only_final' # Options: 'weighted_softmax', 'weighted_majority', 'only_final'
       loss:
         name: "CombinedLoss"
         params:
@@ -88,6 +91,14 @@ architectures:
       dropout: 0.1
       drop_last: True
       patience: 5
+  ms-unet3d:
+    <<: *backbone-unet
+    awaken_consistency: 
+      enabled: true
+      num_epoch_awakening: 20
+    #  READ THIS: In backbone unet it's always single :) Deep supervisdion has output_fusion_mode don't confuse this.
+    # Also uses strategy pattern here. NMaybe!
+    inference_input_strategy : 'single' # Options: 'single', 'multi', 'random'.
 
     
   # diffnet:
@@ -157,7 +168,7 @@ datasets:
         early_stopping: 
           patience: 200
         batch_size: 2
-        num_epochs: 200
+        num_epochs: 100
         dropout: 0.3
         drop_last: false
       model: 

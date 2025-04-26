@@ -4,13 +4,14 @@ import torch
 
 from utils.assertions import ensure_in
 from utils.utils import RunManager
+import logging
 
 class EarlyStopping:
     """
     Monitors a validation metric and stops training when it stops improving.
     Tracks best scores and determines improvement based on configured criterion.
     """
-    def __init__(self, patience:int, delta:float, criterion:str, verbose:bool, run_manager:RunManager):
+    def __init__(self, patience:int, delta:float, criterion:str, verbose:bool):
         """
         Args:
             patience (int): How long to wait after last time validation metric improved.
@@ -25,13 +26,14 @@ class EarlyStopping:
         self.delta = delta
         self.criterion = criterion
         self.verbose = verbose
-        self.rm = run_manager
 
         self.counter = 0
         self.early_stop = False
 
         self.best_loss = np.Inf
-        self.best_dice = -np.Inf 
+        self.best_dice = -np.Inf
+        self.logger = logging.getLogger(__name__)
+
 
     def __call__(self, val_loss, val_dice):
         """
@@ -58,15 +60,15 @@ class EarlyStopping:
                   'dice': f"Validation dice improved ({previous_best_dice:.4f} -> {val_dice:.4f})",
                   'both': f"Both improved (loss: {previous_best_loss:.4f}->{val_loss:.4f}, dice: {previous_best_dice:.4f}->{val_dice:.4f})"
                 }
-                self.rm.info(messages[self.criterion])
+                self.logger.info(messages[self.criterion])
         else:
             self.counter += 1
             if self.verbose:
                 crit_name = "loss & dice" if self.criterion == "both" else self.criterion
-                self.rm.info(f'No improvement in {crit_name} ({self.counter}/{self.patience})')
+                self.logger.info(f'No improvement in {crit_name} ({self.counter}/{self.patience})')
                 
             if self.counter >= self.patience:
                 self.early_stop = True
-                self.rm.info(f'Early stopping triggered', stdout=True)
+                self.logger.info(f'Early stopping triggered')
 
         return self.early_stop, improved

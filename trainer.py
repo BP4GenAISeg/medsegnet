@@ -1,3 +1,4 @@
+import logging
 import time
 from omegaconf import DictConfig
 import torch
@@ -39,9 +40,9 @@ class Trainer:
             self.optimizer = optimizer
             self.lr_scheduler = lr_scheduler
             self.device = device
+            self.logger = logging.getLogger(__name__) 
             self.rm = run_manager
             self.wandb_logger = wandb_logger
-            
             self.best_val_loss = float('inf')
             self.best_val_dice = float('-inf')
             self.early_stopping_counter = 0
@@ -55,10 +56,9 @@ class Trainer:
                         delta=self.early_stopping_cfg.get('delta', 0.0),
                         criterion=self.early_stopping_cfg.get('criterion', 'loss'),
                         verbose=self.early_stopping_cfg.get('verbose', True),
-                        run_manager=self.rm
                     )
                 except Exception as e:
-                    self.rm.error(f"Error initializing EarlyStopping: {e}. Disabling.", stdout=True)
+                    self.logger.error(f"Error initializing EarlyStopping: {e}. Disabling.")
                     self.early_stopper = None
 
 
@@ -68,11 +68,11 @@ class Trainer:
 
             self.class_labels = {i: f"class_{i}" for i in range(self.num_classes)}
 
-            self.rm.info(f"Trainer initialized with {self.num_epochs} epochs!")
+            self.logger.info(f"Trainer initialized with {self.num_epochs} epochs!")
             if self.wandb_logger and self.wandb_logger.run and self.wandb_logger.is_active:
-                self.rm.info(f"WandB logging enabled: {self.wandb_logger.run.url}")
+                self.logger.info(f"WandB logging enabled: {self.wandb_logger.run.url}")
             else:
-                self.rm.info("WandB logging disabled.")
+                self.logger.info("WandB logging disabled.")
 
 
     def train_one_epoch(self, epoch: int):
@@ -95,7 +95,7 @@ class Trainer:
                 loss = compute_ds_loss(self.criterion, outputs, masks, current_weights, self.device)
 
                 if torch.isnan(loss) or torch.isinf(loss):
-                    self.rm.warning(f"Loss is NaN or Inf at epoch {epoch}. Skipping batch.", stdout=True)
+                    self.logger.warning(f"Loss is NaN or Inf at epoch {epoch}. Skipping batch.")
                 
                     # Optionally log this event to WandB, so we can see how often it happens
                     if self.wandb_logger:
@@ -112,7 +112,7 @@ class Trainer:
                 progress_bar.set_postfix(batch_loss=batch_loss)
 
         except Exception as e:
-            self.rm.error(f"Error during training: {str(e)}", stdout=True)
+            self.logger.error(f"Error during training: {str(e)}")
             if self.wandb_logger:
                 self.wandb_logger.log_metrics({"train/skipped_batches": 1}, step=epoch)
             raise e
@@ -164,12 +164,12 @@ class Trainer:
                 
                 epoch_duration = time.time() - epoch_start_time
 
-                self.rm.info(
+                self.logger.info(
                     f"Epoch [{epoch+1}/{num_epochs}] | Time: {epoch_duration:.2f}s | "
                     f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Val Dice: {val_dice:.4f} | "
-                    f" Val Dice per Class: {val_dice_per_class}",
-                    stdout=True
+                    f" Val Dice per Class: {val_dice_per_class}"
                 )
+
 
                 # --- Log Epoch Timing ---
                 if self.wandb_logger:
@@ -201,12 +201,12 @@ class Trainer:
                             epoch=epoch,
                             metric=metric
                         )
-                        self.rm.info(f"New best model checkpoint saved to {model_save_path}")  
+                        self.logger.info(f"New best model checkpoint saved to {model_save_path}")  
                     if stop_training:
                         break
                     
             total_time = time.time() - start_time
-            self.rm.info(f"Training completed in {total_time:.2f} seconds.", stdout=True)
+            self.logger.info(f"Training completed in {total_time:.2f} seconds.")
             
             if self.wandb_logger and self.wandb_logger.run:
                 self.wandb_logger.run.summary["total_training_time_sec"] = total_time
@@ -217,7 +217,7 @@ class Trainer:
                     self.wandb_logger.run.summary["best_val_dice"] = self.early_stopper.best_dice
 
         except Exception as e:
-            self.rm.error(f"Unhandled exception during training: {e}", stdout=True)
+            self.logger.error(f"Unhandled exception during training: {e}")
             if self.wandb_logger:
                 self.wandb_logger.finalize(exit_code=1) 
             raise e 
@@ -249,7 +249,7 @@ class Trainer:
                     loss = compute_ds_loss(self.criterion, outputs, masks, current_weights, self.device)
 
                     if torch.isnan(loss) or torch.isinf(loss):
-                        self.rm.warning(f"NaN/Inf validation loss encountered at epoch {epoch}, batch {batch_idx}. Skipping batch metrics.", stdout=True)
+                        self.logger.warning(f"NaN/Inf validation loss encountered at epoch {epoch}, batch {batch_idx}. Skipping batch metrics.")
                         continue 
 
                     val_loss += loss.item()
@@ -279,7 +279,7 @@ class Trainer:
                     # ---------------------------------------------------------
 
             except Exception as e:
-                self.rm.error(f"Error during validation epoch {epoch}: {str(e)}", stdout=True)
+                self.logger.error(f"Error during validation epoch {epoch}: {str(e)}")
                 if self.wandb_logger:
                     self.wandb_logger.finalize(exit_code=1)
                 raise e
@@ -311,7 +311,7 @@ class Trainer:
             f" Validation Loss: {avg_val_loss:.4f} | Dice Score: {avg_dice_score:.4f}\n"
             f"  ↳ Per-Class: [ {class_dice_summary} ]"
         )
-        self.rm.info(log_message, stdout=True)
+        self.logger.info(log_message)
         return avg_val_loss, avg_dice_score, avg_dice_per_class
 
     def test(self):
@@ -348,15 +348,14 @@ class Trainer:
                     batch_avg = torch.mean(torch.stack(dice_scores_batch)).item()
                     progress_bar.set_postfix(dice_score=f"{batch_avg:.4f}")
             except Exception as e:
-                self.rm.error(f"Error during testing: {str(e)}", stdout=True)
+                self.logger.error(f"Error during testing: {str(e)}")
                 raise e
             
         avg_per_class = dice_scores_sum / len(self.test_dataloader)
         overall_avg = avg_per_class.mean().item()
 
-        self.rm.info(f"Test | Overall Dice: {overall_avg:.4f}", stdout=True)
+        self.logger.info(f"Test | Overall Dice: {overall_avg:.4f}")
         for class_idx, score in zip(active_classes, avg_per_class):
-            self.rm.info(
-                f"     | Class {class_idx} Dice: {score.item():.4f}", 
-                stdout=True
+            self.logger.info(
+                f"     | Class {class_idx} Dice: {score.item():.4f}"
             )

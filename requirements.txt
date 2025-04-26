@@ -1,3 +1,4 @@
+python
 torch
 torchvision
 torchaudio
@@ -7,3 +8,4 @@ matplotlib
 nibabel
 omegaconf
 hydra-core
+tqdm 

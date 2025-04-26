@@ -24,7 +24,7 @@ def compute_dice_score(
     intersection = (pred_c * mask_c).sum()
     sum_pred = pred_c.sum()
     sum_mask = mask_c.sum()
-    return (2 * intersection + smooth) / (sum_pred + sum_mask + smooth)
+    return (2 * intersection + smooth) / (sum_pred + sum_mask + smooth) #FIXME consider if smooth is stupid, since sum_mask should always have a value right and if not then we want 0, but in that case we get 1 => so we properly need a if-statement of sort that saftety check this.
 
 
 def _compute_dice_scores(

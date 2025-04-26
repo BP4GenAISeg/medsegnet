@@ -3,6 +3,51 @@ import inspect
 from typing import Dict, Callable, Any, List, Sequence
 import torch.nn.functional as F
 
+# --- Weight Computation Strategies ---
+def _compute_power_of_two_weights(num_levels: int) -> List[float]:
+    """Computes weights decreasing by powers of two for each level."""
+    weights = [pow(2.0, -float(index)) for index in range(num_levels)] # Start from 0 for pow(2,0)=1
+    # Normalize weights
+    total = sum(weights)
+    if total == 0: # Avoid division by zero if num_levels is 0 or less (shouldn't happen)
+        return []
+    return [w / total for w in weights]
+
+def _compute_linear_weights(num_levels: int) -> List[float]:
+    """Computes equal weights for each level."""
+    if num_levels <= 0:
+        return []
+    weight = 1.0 / float(num_levels)
+    return [weight] * num_levels
+
+WEIGHT_STRATEGIES: Dict[str, Callable[[int], List[float]]] = {
+    'power_of_two': _compute_power_of_two_weights,
+    'equal': _compute_linear_weights, 
+}
+# --- End Weight Computation Strategies ---
+
+def compute_weights(num_levels: int, strategy: str = 'power_of_two') -> List[float]:
+    """
+    Get the weights for each level based on the specified strategy.
+
+    Args:
+        num_levels (int): Number of scales or levels.
+        strategy (str): The weighting strategy to use ('power_of_two', 'linear', etc.).
+                        Defaults to 'power_of_two'.
+
+    Returns:
+        list: Normalized weights for each output level.
+    """
+    strategy_fn = WEIGHT_STRATEGIES.get(strategy.lower())
+    if strategy_fn is None:
+        raise ValueError(
+            f"Unknown weighting strategy: '{strategy}'. "
+            f"Available strategies: {list(WEIGHT_STRATEGIES.keys())}"
+        )
+    return strategy_fn(num_levels)
+
+
+
 FUSION_FUNCTIONS = {}
 
 def register_fusion_function(fn):
@@ -10,21 +55,6 @@ def register_fusion_function(fn):
     FUSION_FUNCTIONS[fn.__name__.lower()] = fn
     return fn
 
-def compute_weights_depth(depth:int) -> List[float]:
-  """
-  Get the weights for deep supervision outputs based on the depth of the model.
-
-  Args:
-      depth (int): Depth of the model.
-
-  Returns:
-      list: Weights for each output.
-  """
-
-  weights = [pow(2, -index) for index in range(1, depth+1)]
-  total = sum(weights)
-  return list(map(lambda w: w / total, weights))
-   
 def get_fusion_fn(inference_fusion_mode:str) -> Callable[..., torch.Tensor]:
   """
   Get the fusion function by name.

@@ -12,8 +12,8 @@ class DataManager:
             self,
             dataset_class: Type[MedicalDecathlonDataset],
             arch_cfg: DictConfig,
-            seed: int,
-            split_ratios: Tuple[float, float, float] = (0.80, 0.05, 0.15), 
+                seed: int,
+                split_ratios: Tuple[float, float, float] = (0.80, 0.05, 0.15), 
         ):
             """
             Initialize the DataManager with a dataset and configuration.
@@ -54,7 +54,7 @@ class DataManager:
         n_val   = int(self.split_ratios[1] * N)
         # whatever remains is test
 
-        # Build index sets
+        # Build index s
         train_idx = perm[:n_train]
         val_idx   = perm[n_train:n_train + n_val]
         test_idx  = perm[n_train + n_val:]

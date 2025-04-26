@@ -6,7 +6,7 @@ from omegaconf import DictConfig
 import hydra
 from data.data_manager import DataManager
 # from trainer import Trainer
-from trainer_multiscale import Trainer
+from trainer_ms import Trainer
 from data.datasets import MedicalDecathlonDataset, VALID_TASKS, ProstateDataset, BrainTumourDataset
 from utils.assertions import ensure_has_attr, ensure_has_attrs
 from utils.losses import get_loss_fn
@@ -51,7 +51,8 @@ def main(cfg: DictConfig):
   model = create_model(unified_cfg, model_name).to(device)
   criterion = get_loss_fn(unified_cfg)
 
-  try: 
+  try:
+    # TODO: (Performace boost, but doesn't change anything)try the  =>  params=filter(lambda p: p.requires_grad, model.parameters())  url: https://medium.com/we-talk-data/guide-to-freezing-layers-in-pytorch-best-practices-and-practical-examples-8e644e7a9598
     optimizer = hydra.utils.instantiate(unified_cfg.training.optimizer, params=model.parameters())
   except Exception as e:
     logger.error(f"Failed to instantiate optimizer: {e}")

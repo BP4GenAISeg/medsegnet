@@ -15,6 +15,8 @@ import sys
 import numpy as np
 import random
 
+from data.datasets import VALID_TASKS, BrainTumourDataset, MedicalDecathlonDataset, ProstateDataset
+
 
 def setup_seed(seed: Optional[int]):
   if not seed: return
@@ -167,20 +169,20 @@ from omegaconf import DictConfig
 
 DEFAULT_FMT     = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 DEFAULT_DATEFMT = "%Y-%m-%d %H:%M:%S"
-
-# module‐level guard
 _is_logging_configured = False
+# module‐level guard
 def setup_logging(logging_cfg: DictConfig, run_exp_dir: str):
-    """
-    Call this exactly once per process (e.g. from RunManager.__init__).
-    Subsequent calls are no‐ops.
-    """
     global _is_logging_configured
     if _is_logging_configured:
         return
+
     root = logging.getLogger()
     root.setLevel(logging.NOTSET)
     root.propagate = False
+
+    # ---- If we don't have this, we will get default logging that logging provides us with, we dont :) 
+    for handler in root.handlers[:]:
+        root.removeHandler(handler)
 
     file_cfg    = logging_cfg.get("file", {})
     console_cfg = logging_cfg.get("console", {})
@@ -188,7 +190,6 @@ def setup_logging(logging_cfg: DictConfig, run_exp_dir: str):
     file_enabled    = file_cfg.get("level")    is not None
     console_enabled = console_cfg.get("level") is not None
 
-    # File handler
     if file_enabled:
         lvl = getattr(logging, file_cfg["level"].upper(), logging.INFO)
         fh  = logging.FileHandler(os.path.join(run_exp_dir, "output.log"))
@@ -197,10 +198,10 @@ def setup_logging(logging_cfg: DictConfig, run_exp_dir: str):
             file_cfg.get("format", DEFAULT_FMT),
             datefmt=file_cfg.get("datefmt", DEFAULT_DATEFMT)
         ))
+        
         root.addHandler(fh)
         root.debug(f"File logging enabled at {file_cfg['level']}")
 
-    # Console handler
     if console_enabled:
         lvl = getattr(logging, console_cfg["level"].upper(), logging.INFO)
         ch  = logging.StreamHandler(sys.stdout)
@@ -214,7 +215,15 @@ def setup_logging(logging_cfg: DictConfig, run_exp_dir: str):
 
     _is_logging_configured = True
     root.debug("Root logger configuration complete.")
-    
+
+#TODO: Consider a generalized dataset factory
+#def get_dataset(task_name, *args, **kwargs):
+#    if task_name not in DATASET_MAPPING:
+#        raise ValueError(f"Unknown task '{task_name}'. Available tasks: {list(DATASET_MAPPING.keys())}")
+#
+#    DatasetClass = DATASET_MAPPING[task_name]
+#    return DatasetClass(*args)
+
 class RunManager:
     def __init__(self, unified_cfg: DictConfig):
         self.unified_cfg = unified_cfg

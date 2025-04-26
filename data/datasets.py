@@ -55,21 +55,20 @@ class MedicalDecathlonDataset(Dataset):
         
         self.target_shape = self.arch_cfg.dataset.target_shape
         self.num_classes = self.arch_cfg.dataset.num_classes
-
-        
         
         if self.phase == "train":
             self.transform = AugmentationUtils.get_train_transforms(self.target_shape)
         elif self.phase == "val":
             #FIXME: this is a temporary solution for testing purposes of multiscale only. 
-            print("[IMPORTANT]: currently using the same transforms for validation and test.")
-            # target_shape = (32, 64, 32) #full resolution
-            target_shape = (16, 32, 16) #half resolution
+            target_shape = (32, 64, 32) #full resolution
+            # target_shape = (16, 32, 16) #half resolution
             
             self.transform = AugmentationUtils.get_validation_transforms(target_shape)
         elif self.phase == 'test':
-            target_shape = (16, 32, 16) #half resolution
+            # target_shape = (16, 32, 16) #half resolution
+            target_shape = (32, 64, 32) #full resolution
             self.transform = AugmentationUtils.get_test_transforms(target_shape)
+            
 
     def __len__(self):
         return len(self.image_files)
@@ -85,7 +84,7 @@ class MedicalDecathlonDataset(Dataset):
     
     def __getitem__(self, idx):
         image, mask = self.load_img_and_gts(idx)
-
+        
         # Add channel dim and create subject
         image = image[np.newaxis]
         mask = mask[np.newaxis]
@@ -98,6 +97,7 @@ class MedicalDecathlonDataset(Dataset):
         # Apply transforms 
         subject = self.transform(subject)
 
+            
         #FIXME: We need to check if image is shaped as (D, H, W)
         # mayube the library torchio is reshparing it WE NEED TO CHECK THIS!
         
