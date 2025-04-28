@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import Optional
 import numpy as np
 from sympy import N
 import torch
@@ -122,25 +122,107 @@ def dice_coefficient_classes(
 # ----- End Dice coefficient -----
 
 
-# ----- Precision, Recall, F1 -----
-def compute_precision_recall_f1(
+# ----- Precision -----
+def precision_score_class(
     preds: torch.Tensor,
     masks: torch.Tensor,
     cls: int,
     smooth: float = 1e-6,
-) -> Tuple[float, float, float]:
+) -> float:
     pred_c = (preds == cls).float()
     mask_c = (masks == cls).float()
-
     tp = (pred_c * mask_c).sum()
     fp = (pred_c * (1 - mask_c)).sum()
-    fn = ((1 - pred_c) * mask_c).sum()
-
     precision = (tp + smooth) / (tp + fp + smooth)
-    recall = (tp + smooth) / (tp + fn + smooth)
-    f1 = (2 * precision * recall + smooth) / (precision + recall + smooth)
+    return precision.item()
 
-    return precision.item(), recall.item(), f1.item()
+
+def precision_score_classes(
+    preds: torch.Tensor,
+    masks: torch.Tensor,
+    num_classes: int,
+    smooth: float = 1e-6,
+    ignore_index: Optional[int] = None,
+) -> list[float]:
+    scores = []
+    for c in range(num_classes):
+        if ignore_index is not None and c == ignore_index:
+            continue
+        score = precision_score_class(preds, masks, c, smooth)
+        scores.append(score)
+    return scores
+
+
+def precision_score(
+    preds: torch.Tensor,
+    masks: torch.Tensor,
+    num_classes: int,
+    smooth: float = 1e-6,
+    ignore_index: Optional[int] = None,
+) -> float:
+    scores = precision_score_classes(preds, masks, num_classes, smooth, ignore_index)
+    return sum(scores) / len(scores) if scores else 0.0
+
+
+# ----- End Precision -----
+
+
+# ----- Recall -----
+def recall_score_class(
+    preds: torch.Tensor,
+    masks: torch.Tensor,
+    cls: int,
+    smooth: float = 1e-6,
+) -> float:
+    pred_c = (preds == cls).float()
+    mask_c = (masks == cls).float()
+    tp = (pred_c * mask_c).sum()
+    fn = ((1 - pred_c) * mask_c).sum()
+    recall = (tp + smooth) / (tp + fn + smooth)
+    return recall.item()
+
+
+def recall_score_classes(
+    preds: torch.Tensor,
+    masks: torch.Tensor,
+    num_classes: int,
+    smooth: float = 1e-6,
+    ignore_index: Optional[int] = None,
+) -> list[float]:
+    scores = []
+    for c in range(num_classes):
+        if ignore_index is not None and c == ignore_index:
+            continue
+        score = recall_score_class(preds, masks, c, smooth)
+        scores.append(score)
+    return scores
+
+
+def recall_score(
+    preds: torch.Tensor,
+    masks: torch.Tensor,
+    num_classes: int,
+    smooth: float = 1e-6,
+    ignore_index: Optional[int] = None,
+) -> float:
+    scores = recall_score_classes(preds, masks, num_classes, smooth, ignore_index)
+    return sum(scores) / len(scores) if scores else 0.0
+
+
+# ----- End Recall -----
+
+
+# ----- F1 -----
+def f1_score_class(
+    preds: torch.Tensor,
+    masks: torch.Tensor,
+    cls: int,
+    smooth: float = 1e-6,
+) -> float:
+    precision = precision_score_class(preds, masks, cls, smooth)
+    recall = recall_score_class(preds, masks, cls, smooth)
+    f1 = (2 * precision * recall + smooth) / (precision + recall + smooth)
+    return f1
 
 
 def f1_score_classes(
@@ -150,13 +232,13 @@ def f1_score_classes(
     smooth: float = 1e-6,
     ignore_index: Optional[int] = None,
 ) -> list[float]:
-    f1_scores = []
+    scores = []
     for c in range(num_classes):
         if ignore_index is not None and c == ignore_index:
             continue
-        _, _, f1 = compute_precision_recall_f1(preds, masks, c, smooth)
-        f1_scores.append(f1)
-    return f1_scores
+        score = f1_score_class(preds, masks, c, smooth)
+        scores.append(score)
+    return scores
 
 
 def f1_score(
@@ -166,10 +248,8 @@ def f1_score(
     smooth: float = 1e-6,
     ignore_index: Optional[int] = None,
 ) -> float:
-    f1_scores = f1_score_classes(preds, masks, num_classes, smooth, ignore_index)
-    if not f1_scores:
-        return 0.0
-    return sum(f1_scores) / len(f1_scores)
+    scores = f1_score_classes(preds, masks, num_classes, smooth, ignore_index)
+    return sum(scores) / len(scores) if scores else 0.0
 
 
-# ----- End Precision, Recall, F1 ----
+# ----- End F1 -----
