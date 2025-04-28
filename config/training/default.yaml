@@ -1,0 +1,25 @@
+# generic training defaults
+num_epochs: 100
+batch_size: 2
+learning_rate: 3e-4
+
+loss:
+  _target_: utils.losses.CombinedLoss
+  alpha: 0.35
+  ignore_index: 0
+
+optimizer:
+  _target_: torch.optim.AdamW
+  lr: ${..learning_rate}
+  weight_decay: 1e-4
+
+scheduler:
+  _target_: torch.optim.lr_scheduler.StepLR
+  step_size: 30
+  gamma: 0.1
+
+early_stopper:
+  patience: 15
+  verbose: true
+  delta: 1e-3
+  criterion: "loss"

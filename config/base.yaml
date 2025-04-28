@@ -1,0 +1,44 @@
+# -- Active dataset selection AND architecture --
+defaults:
+    - architecture: ms-unet3d
+    - dataset: Task04_Hippocampus
+    - training: default
+
+# Hardware settings (applies globally)
+gpu:
+    mode: "single" # Options: "single", "multi"
+    devices: [0] # e.g., [0, 1, 2, 3] for multi-GPU
+    backend: "nccl" # "nccl" for GPU, "gloo" for CPU
+
+# -- Logging settings --
+logging:
+    #   critical  # 50: only the most severe (critical) messages
+    #   error     # 40: errors and critical
+    #   warning   # 30: warnings, errors, critical
+    #   info      # 20: info, warnings, errors, critical
+    #   debug     # 10: debug, info, warnings, errors, critical
+    #   notset    # 0: no filtering (all messages pass through)
+    #placeholders url for format: https://docs.python.org/3/library/logging.html#logrecord-attributes
+    file:
+        level: "debug"
+        format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        datefmt: "%Y-%m-%d %H:%M:%S"
+    console:
+        level: "info"
+        format: "[%(levelname)s]: %(message)s"
+        datefmt: "%H:%M:%S"
+
+# -- Wandb settings --
+tracking:
+    log_to_wandb: false
+    wandb_project: "MedicalSegmentation"
+    # Dynamic name, so like "unet_lr_1e-4_wd_1e-7_{date}"
+    # Then its really use to compare in graphs between runs
+    run_name: "unet_awk_80_${now:%Y-%m-%d_%H-%M-%S}"
+
+# -- Seed settings --
+seed: 42 # None for no seed and integer for a numbered seed
+
+# -- Storage settings--
+trained_models:
+    base_dir: "trained_models"

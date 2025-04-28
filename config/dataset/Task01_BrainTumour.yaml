@@ -1,0 +1,5 @@
+target_shape: [256, 256, 160]
+base_path: "datasets/Task01_BrainTumour/"
+images_subdir: "imagesTr"
+labels_subdir: "labelsTr"
+num_classes: 4

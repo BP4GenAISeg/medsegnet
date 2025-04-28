@@ -10,8 +10,7 @@ from torch.utils.data import DataLoader
 from data.datasets import MedicalDecathlonDataset
 from utils import losses
 from utils.assertions import ensure_in
-from utils.callbacks import EarlyStopping
-from utils.inference import call_fusion_fn, call_fusion_fn, compute_weights_depth, get_fusion_fn, weighted_softmax
+from trainers.callbacks.early_stopping import EarlyStopping
 from utils.losses import compute_ds_loss
 from utils.metric_collecter import Agg, MetricCollector, TrainingCollector
 from utils.metrics import dice_coefficient, dice_coefficient_classes
@@ -22,11 +21,12 @@ from torch.nn.utils.clip_grad import clip_grad_norm_
 import torch.nn.functional as F
 import logging
 import matplotlib.pyplot as plt
+from utils.fusion import OutputFuser
 
 class Trainer:
     def __init__(
             self, 
-            unified_cfg: DictConfig,
+            cfg: DictConfig,
             model: torch.nn.Module, 
             train_dataloader: DataLoader[MedicalDecathlonDataset],
             val_dataloader: DataLoader[MedicalDecathlonDataset],
@@ -38,7 +38,19 @@ class Trainer:
             run_manager: RunManager,
             wandb_logger: WandBLogger | None 
         ):
-            self.unified_cfg = unified_cfg
+            self.unified_cfg = cfg
+            
+            self.architecture = cfg.active_architecture
+            
+            self.enable_multiscale = self.architecture == "ms-unet3d"
+            self.enable_deep_supervision = (
+                self.architecture == "ds-unet3d" and
+                cfg.architectures["ds-unet3d"].model_defaults.deep_supervision.enabled
+    
+                )
+
+
+            self.logger = logging.getLogger(__name__)
             self.model = model
             self.train_dataloader = train_dataloader
             self.val_dataloader = val_dataloader
@@ -47,7 +59,6 @@ class Trainer:
             self.optimizer = optimizer
             self.lr_scheduler = lr_scheduler
             self.device = device
-            self.logger = logging.getLogger(__name__)
             self.rm = run_manager
             self.wandb_logger = wandb_logger
             self.train_metrics = TrainingCollector()
@@ -58,7 +69,7 @@ class Trainer:
             self.early_stopping_counter = 0
 
             self.early_stopper = None
-            self.early_stopping_cfg = unified_cfg.training.get('early_stopping', None)
+            self.early_stopping_cfg = cfg.training.get('early_stopping', None)
             if self.early_stopping_cfg is not None: 
                 try:
                     self.early_stopper = EarlyStopping(
@@ -71,10 +82,9 @@ class Trainer:
                     self.logger.error(f"Error initializing EarlyStopping: {e}. Disabling.")
                     self.early_stopper = None
 
-
-            self.num_epochs = unified_cfg.training.num_epochs
-            self.num_classes = unified_cfg.dataset.num_classes
-            self.fusion_fn = get_fusion_fn(unified_cfg.model.deep_supervision.inference_fusion_mode)
+            self.num_epochs = cfg.training.num_epochs
+            self.num_classes = cfg.dataset.num_classes
+            
 
             self.class_labels = {i: f"class_{i}" for i in range(self.num_classes)}
 
@@ -87,6 +97,8 @@ class Trainer:
                 
             wandb_url = self.wandb_logger.run.url #type: ignore
             self.logger.info(f"WandB logging enabled: {wandb_url}")
+
+            self.output_fuser = OutputFuser(mode=cfg.fusion.mode, weights=cfg.fusion.weights)
 
 
     def train_one_epoch(self, epoch: int):
@@ -256,9 +268,7 @@ class Trainer:
                     self.wandb_logger.log_metrics({'epoch_duration_sec': epoch_duration}, step=epoch, commit=False)
                 # ------------------------
 
-                # Step ReduceLROnPlateau scheduler if used
-                if self.lr_scheduler and isinstance(self.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
-                    self.lr_scheduler.step(val_loss)      
+    
 
                 # --- Early Stopping and Model Saving ---
                 if self.early_stopper is not None:

@@ -1,0 +1,5 @@
+target_shape: [512, 512, 128]
+base_path: "datasets/Task06_Lung/"
+images_subdir: "imagesTr"
+labels_subdir: "labelsTr"
+num_classes: 2

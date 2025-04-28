@@ -1,0 +1,5 @@
+target_shape: [32, 64, 32]
+base_path: "datasets/Task04_Hippocampus/"
+images_subdir: "imagesTr"
+labels_subdir: "labelsTr"
+num_classes: 10

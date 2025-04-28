@@ -1,0 +1,5 @@
+target_shape: [512, 512, 64]
+base_path: "datasets/Task03_Liver/"
+images_subdir: "imagesTr"
+labels_subdir: "labelsTr"
+num_classes: 3

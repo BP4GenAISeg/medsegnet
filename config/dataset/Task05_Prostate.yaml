@@ -1,0 +1,5 @@
+target_shape: [256, 256, 32]
+base_path: "datasets/Task05_Prostate/"
+images_subdir: "imagesTr"
+labels_subdir: "labelsTr"
+num_classes: 3
