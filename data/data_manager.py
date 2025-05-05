@@ -98,21 +98,33 @@ class DataManager:
             self.train_dataset,
             batch_size=self.cfg.training.batch_size,
             shuffle=True,
-            drop_last=self.cfg.training.drop_last,
+            num_workers=self.cfg.training.num_workers,
+            pin_memory=self.cfg.training.pin_memory,
+            drop_last=self.cfg.architecture.drop_last,
+            persistent_workers=self.cfg.training.persistent_workers,
+            prefetch_factor=self.cfg.training.prefetch_factor,
         )
-        # TODO maybe make arch_cfg.validation.batch_size
+        # TODO maybe make validation instead of training... easy to do inside config/validation instead of config/training, but consider...
         val_dataloader = DataLoader(
             self.val_dataset,
             batch_size=self.cfg.training.batch_size,
             shuffle=False,
+            num_workers=self.cfg.training.num_workers,
+            pin_memory=self.cfg.training.pin_memory,
             drop_last=False,
+            persistent_workers=self.cfg.training.persistent_workers,
+            prefetch_factor=self.cfg.training.prefetch_factor,
         )
         # TODO maybe make arch_cfg.test.batch_size
         test_dataloader = DataLoader(
             self.test_dataset,
             batch_size=self.cfg.training.batch_size,
             shuffle=False,
+            num_workers=self.cfg.training.num_workers,
+            pin_memory=self.cfg.training.pin_memory,
             drop_last=False,
+            persistent_workers=self.cfg.training.persistent_workers,
+            prefetch_factor=self.cfg.training.prefetch_factor,
         )
         return train_dataloader, val_dataloader, test_dataloader
 

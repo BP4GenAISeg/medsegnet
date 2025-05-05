@@ -7,19 +7,21 @@ import hydra
 from data.data_manager import DataManager
 
 # from trainer import Trainer
-from trainer_ms import Trainer
 from data.datasets import (
     MedicalDecathlonDataset,
     VALID_TASKS,
     ProstateDataset,
     BrainTumourDataset,
 )
+from models import DeepSupervision
+from trainers.base_trainer import BaseTrainer
+from trainers.deep_supervision_trainer import DeepSupervisionTrainer
+from trainers.multiscale_trainer import MultiscaleTrainer
 from utils.assertions import ensure_has_attr, ensure_has_attrs
 from utils.losses import get_loss_fn
-from utils.utils import RunManager, prepare_dataset_config, setup_logging, setup_seed
+from utils.utils import RunManager, setup_logging, setup_seed
 import random
 import numpy as np
-from models.factory import create_model
 from utils.wandb_logger import get_wandb_logger
 import argparse
 import logging
@@ -37,15 +39,14 @@ DATASET_MAPPING["Task05_Prostate"] = ProstateDataset
 # Husk hydra.utils.instantiate MED HYDRAS _target_ CONVENTION!
 
 
-@hydra.main(config_path="conf", config_name="config", version_base=None)
+@hydra.main(config_path="config", config_name="base", version_base=None)
 def main(cfg: DictConfig):
-    ensure_has_attrs(cfg, ["active_dataset", "active_architecture", "gpu"], Exception)
+    ensure_has_attrs(cfg, ["gpu"], Exception)
 
     seed = cfg.seed
     setup_seed(seed)
 
-    task_name = cfg.active_dataset
-    model_name = cfg.active_architecture
+    task_name = cfg.dataset.name
 
     assert task_name in DATASET_MAPPING, f"Unknown dataset: {task_name}"
 
@@ -53,7 +54,6 @@ def main(cfg: DictConfig):
     setup_logging(cfg.get("logging", {}), run_manager.run_exp_dir)
 
     logger = logging.getLogger(__name__)
-
     gpu_device = cfg.gpu.devices[0]  # TODO: Handle multiple GPUs
     device = (
         torch.device(f"cuda:{gpu_device}")
@@ -61,13 +61,8 @@ def main(cfg: DictConfig):
         else torch.device("cpu")
     )
 
-    model = create_model(cfg, model_name).to(device)
-
     try:
-        # TODO: (Performace boost, but doesn't change anything)try the  =>  params=filter(lambda p: p.requires_grad, model.parameters())
-        # url: https://medium.com/we-talk-data/guide-to-freezing-layers-in-pytorch-best-practices-and-practical-examples-8e644e7a9598
-        # but you would also need to reinitialize the optimizer, in case of new unfrozen layers
-        # and the optimizer would need to be reinitialized, so adds more complexity
+        model = instantiate(cfg.architecture.path, cfg)
         optimizer = instantiate(cfg.training.optimizer, params=model.parameters())
         criterion = instantiate(cfg.training.loss)
         lr_scheduler = instantiate(cfg.training.scheduler, optimizer=optimizer)
@@ -83,7 +78,7 @@ def main(cfg: DictConfig):
 
     wandb_logger = get_wandb_logger(cfg=cfg, model=model)
 
-    trainer = Trainer(
+    trainer = MultiscaleTrainer(
         cfg,
         model,
         train_dataloader,

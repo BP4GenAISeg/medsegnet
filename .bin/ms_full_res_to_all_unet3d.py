@@ -6,7 +6,6 @@ import torch.nn.functional as F
 from models import register_model
 from models.base import ModelBase
 from utils.config_utils import get_common_args
-from utils.inference import call_fusion_fn, compute_weights_depth
 import numpy as np
 import torchio as tio
 
@@ -30,7 +29,6 @@ class ConvBlock(nn.Module):
         return self.conv(x)
 
 
-@register_model("ms-unet3d")
 class MSUNet3D(ModelBase):
     """
     A dynamic 3D U-Net that can adapt its depth based on the input parameter.
@@ -63,7 +61,6 @@ class MSUNet3D(ModelBase):
         # self.ds_levels = min(deep_supervision_levels, depth)
         # print("depth of the model: ", depth)
         # print("deep supervision levels: ", self.ds_levels)
-
         # Build the encoder pathway dynamically
         self.encoders: nn.ModuleList = nn.ModuleList()
         self.pools: nn.ModuleList = nn.ModuleList()
@@ -123,14 +120,6 @@ class MSUNet3D(ModelBase):
                 nn.Conv3d(n_filters * (2**k), num_classes, kernel_size=1)
             )
         self.logger.debug("-----------------------")
-        print("NEW MODEL")
-        print("NEW MODEL")
-        print("NEW MODEL")
-        print("NEW MODEL")
-        print("NEW MODEL")
-        print("NEW MODEL")
-        print("NEW MODEL")
-        print("NEW MODEL")
 
         # # Deep supervision branches:
         # # We attach deep supervision branches to the first few decoder blocks.
@@ -186,85 +175,59 @@ class MSUNet3D(ModelBase):
             out = torch.cat([out, skip], dim=1)
             out = decoder(out)
             out = dropout(out)
+
             decoder_feats.append(out)
 
+        decoder_feats.reverse()
+        ms_outputs = [
+            ms_head(dec_feat)
+            for ms_head, dec_feat in zip(self.ms_heads, decoder_feats[1:])
+        ]
         final_out = self.final_conv(out)
 
-        # ===== Multiscale inputs (during training) =====
-        ms_outputs = []
+        # ===== Multiscale inputs (during training awakens after n epochs) =====
         D, H, W = x.shape[2:]
         msb_feats = []  # msb1, msb2, msb3
         for d in range(1, self.depth):
             # Downsampling
             target_size = (D // (2**d), H // (2**d), W // (2**d))
+            # TODO: HJALTE try (with torch.no_grad()):
             x_ms = F.interpolate(
                 x, size=target_size, mode="trilinear", align_corners=True
             )
 
             # Build encoder features for MS path
-            ms_feats = []
             msb = self.msb_blocks[d - 1]
             out_ms = msb(x_ms)
-            msb_feats.append(out_ms)  # This line i added
-            ms_feats.append(out_ms)
-            out_ms = self.pools[d](out_ms)
-            out_ms = self.enc_dropouts[d](out_ms)
-
-            for enc, pool, dropout in zip(
-                list(self.encoders)[d + 1 :],
-                list(self.pools)[d + 1 :],
-                list(self.enc_dropouts)[d + 1 :],
-            ):
-                out_ms = enc(out_ms)
-                ms_feats.append(out_ms)
-                out_ms = dropout(pool(out_ms))
-
-            # bottleneck
-            out_ms = self.bn(out_ms)
-
-            num_ups = self.depth - d
-
-            # Decoder up to match MS scale
-            for up_conv, dec, drop in zip(
-                list(self.up_convs)[
-                    :num_ups
-                ],  # or remove list but # type: ignore[reportArgumentType]
-                list(self.decoders)[:num_ups],
-                list(self.dec_dropouts)[:num_ups],
-            ):
-                out_ms = up_conv(out_ms)
-                skip = ms_feats.pop()  # pop the last feature appended
-                out_ms = torch.cat([out_ms, skip], dim=1)
-                out_ms = dec(out_ms)
-                out_ms = drop(out_ms)
-
-            ms_seg = self.ms_heads[d - 1](out_ms)
-            ms_outputs.append(ms_seg)
+            msb_feats.append(out_ms)
 
         segmentations = (final_out, *ms_outputs)
         consistency_pairs = tuple(zip(msb_feats, full_enc_feats[1:]))
         return segmentations, consistency_pairs
 
-        # if self.ds and (self.training or self.inference_fusion_mode != 'only_final'):
-        #     # Compute deep supervision outputs from selected decoder features.
-        #     # In our design, decoder_features[0] is the deepest decoder output,
-        #     # and we attach supervision branches to the first few blocks.
-        #     ds_outputs = []
-        #     for i, (d, ds_conv) in enumerate(zip(range(self.ds_levels, 0, -1), self.ds_convs)):
-        #         ds_out = ds_conv(decoder_feats[i])
+    def forward_inference_downsample(self, x: torch.Tensor):
+        """
+        Forward pass for inference with downsampling.
+        """
+        # Downsample the input
+        D, H, W = x.shape[2:]
+        target_size = (D // 2, H // 2, W // 2)
+        x_downsampled = F.interpolate(
+            x, size=target_size, mode="trilinear", align_corners=True
+        )
 
-        #         # Calculate upsampling factor. For example, if depth==4:
-        #         #  - For i==0 (deepest decoder output): factor = 2^(4-1)=8
-        #         #  - For i==1: factor = 2^(4-2)=4
-        #         #  - For i==2: factor = 2^(4-3)=2
-        #         up_factor = 2 ** (d)
-        #         ds_out = F.interpolate(ds_out, scale_factor=up_factor, mode='trilinear', align_corners=True)
-        #         ds_outputs.append(ds_out)
-        #     return (final, *ds_outputs)
-        # else:
-        #     return (final,)
+        # Forward pass through the model
+        out = self._forward_inference(x_downsampled)
 
-    def _forward_inference(self, x: torch.Tensor):
+        return out
+
+    def _forward_inference_single(self, x: torch.Tensor):
+        # TODO: Make forward inference able to train on any of the resolution, but just one
+        # if self.phase != "train":
+        #     target_shape = (16, 32, 16) #half resolution
+
+        #     subject.image.data = F.interpolate(subject.image.data.unsqueeze(0), size=target_shape, mode='trilinear', align_corners=True).squeeze(0)
+        #     subject.mask.data = F.interpolate(subject.mask.data.unsqueeze(0).float(), size=target_shape, mode='nearest').squeeze(0)
         D, H, W = x.shape[2:]
         input_shape = (D, H, W)
         base_shape = (32, 64, 32)

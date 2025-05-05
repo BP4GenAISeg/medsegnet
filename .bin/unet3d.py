@@ -6,7 +6,6 @@ import torch.nn.functional as F
 from models import register_model
 from models.base import ModelBase
 from utils.config_utils import get_common_args
-from utils.inference import compute_weights_depth
 
 
 class ConvBlock(nn.Module):
@@ -47,7 +46,7 @@ class UNet3D(ModelBase):
         dropout: float,
         batch_norm: bool,
         ds: bool,
-        ms: bool,
+        # ms: bool,
         inference_fusion_mode: str,
         deep_supervision_levels: int,
         depth: int,
@@ -74,7 +73,6 @@ class UNet3D(ModelBase):
             self.encoders.append(ConvBlock(in_ch, out_ch, batch_norm=batch_norm))
             self.pools.append(nn.MaxPool3d(kernel_size=2, stride=2))
             self.enc_dropouts.append(nn.Dropout3d(dropout))
-
         """
         Bottleneck layer (center block, bottom of the U-Net).
         """
@@ -128,11 +126,7 @@ class UNet3D(ModelBase):
                 torch.log(init_weights)
             )  # Softmax will amplify deeper layers
 
-    def forward(self, x, phase):
-
-        # x1 = x       # full resolution
-        # x2 = downsample(input, factor=2)
-
+    def forward(self, x):
         min_size = 2**self.depth
         assert all(
             dim >= min_size for dim in x.shape[2:]
@@ -204,6 +198,6 @@ class UNet3D(ModelBase):
         base_args = get_common_args(config)
         return cls(
             **base_args,
-            deep_supervision_levels=config.model.deep_supervision.levels,
-            depth=config.model.depth,
+            deep_supervision_levels=config.architecture.deep_supervision.levels,
+            depth=config.architecture.depth,
         )

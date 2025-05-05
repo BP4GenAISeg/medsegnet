@@ -16,7 +16,7 @@ from preprocessing.normalization import is_image_normalized
 import numpy as np
 import torchio as tio
 from utils.assertions import ensure, ensure_pexists
-
+print("hello")
 VALID_TASKS = {
     "Task01_BrainTumour",
     "Task02_Heart",
@@ -39,10 +39,9 @@ class MedicalDecathlonDataset(Dataset):
     ):
         self.arch_cfg = arch_cfg
         self.phase = phase
-
         base = arch_cfg.dataset.base_path
-        self.images_path = f"{base}{arch_cfg.dataset.images_subdir}"
-        self.masks_path = f"{base}{arch_cfg.dataset.labels_subdir}"
+        self.images_path = f"{base}{arch_cfg.dataset.images_subdir}/scale0"
+        self.masks_path = f"{base}{arch_cfg.dataset.labels_subdir}/scale0"
         ensure_pexists(self.images_path, FileNotFoundError)
         ensure_pexists(self.masks_path, FileNotFoundError)
     
@@ -59,15 +58,9 @@ class MedicalDecathlonDataset(Dataset):
         if self.phase == "train":
             self.transform = AugmentationUtils.get_train_transforms(self.target_shape)
         elif self.phase == "val":
-            #FIXME: this is a temporary solution for testing purposes of multiscale only. 
-            target_shape = (32, 64, 32) #full resolution
-            # target_shape = (16, 32, 16) #half resolution
-            
-            self.transform = AugmentationUtils.get_validation_transforms(target_shape)
+            self.transform = AugmentationUtils.get_validation_transforms(self.target_shape)
         elif self.phase == 'test':
-            # target_shape = (16, 32, 16) #half resolution
-            target_shape = (32, 64, 32) #full resolution
-            self.transform = AugmentationUtils.get_test_transforms(target_shape)
+            self.transform = AugmentationUtils.get_test_transforms(self.target_shape)
             
 
     def __len__(self):

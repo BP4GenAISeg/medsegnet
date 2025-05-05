@@ -1,13 +1,13 @@
 # -- Active dataset selection AND architecture --
 defaults:
-    - architecture: ms-unet3d
+    - architecture: ds-unet3d
     - dataset: Task04_Hippocampus
     - training: default
 
 # Hardware settings (applies globally)
 gpu:
     mode: "single" # Options: "single", "multi"
-    devices: [0] # e.g., [0, 1, 2, 3] for multi-GPU
+    devices: [2] # e.g., [0, 1, 2, 3] for multi-GPU
     backend: "nccl" # "nccl" for GPU, "gloo" for CPU
 
 # -- Logging settings --
