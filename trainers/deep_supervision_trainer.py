@@ -66,3 +66,4 @@ class DeepSupervisionTrainer(BaseTrainer):
     def _compute_metrics(self, outputs, masks) -> Dict[str, Any]:
         outputs = self.fuser(outputs)
         return super()._compute_metrics(outputs, masks)
+
