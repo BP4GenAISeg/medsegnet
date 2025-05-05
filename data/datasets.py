@@ -40,8 +40,8 @@ class MedicalDecathlonDataset(Dataset):
         self.arch_cfg = arch_cfg
         self.phase = phase
         base = arch_cfg.dataset.base_path
-        self.images_path = f"{base}{arch_cfg.dataset.images_subdir}/scale0"
-        self.masks_path = f"{base}{arch_cfg.dataset.labels_subdir}/scale0"
+        self.images_path = f"{base}{arch_cfg.dataset.images_subdir}"
+        self.masks_path = f"{base}{arch_cfg.dataset.labels_subdir}"
         ensure_pexists(self.images_path, FileNotFoundError)
         ensure_pexists(self.masks_path, FileNotFoundError)
     

@@ -45,6 +45,7 @@
     "training",
     "multiscale",
     "configuration",
-    "weights"
+    "weights",
+    "config"
   ],
 }
