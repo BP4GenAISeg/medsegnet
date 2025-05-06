@@ -1,0 +1,15 @@
+defaults:
+  - backbone-unet3d
+
+_target_: models.ms_full_res_to_all_unet3d.MSUNet3D
+
+name: ms-unet3d
+
+awaken_consistency:
+  enabled: true
+  num_epoch_awakening: 20
+
+# Note: In backbone-unet, the inference input strategy is always 'single'.
+# Deep supervision utilizes 'output_fusion_mode', so do not confuse the two.
+# This also employs the strategy pattern.
+inference_input_strategy: "multi" # Options: 'single', 'multi' 

@@ -1,294 +1,215 @@
-import numpy as np
+from omegaconf import DictConfig
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from omegaconf import DictConfig
 
-from models import register_model
-from models.base import ModelBase
-from models.config_utils import get_common_args
+import numpy as np
+import torchio as tio
+
+import logging
+
+import random
 
 
 class ConvBlock(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, batch_norm=True):
-        super().__init__()
-        self.conv = nn.Sequential(
+        super(ConvBlock, self).__init__()
+        layers = [
             nn.Conv3d(in_channels, out_channels, kernel_size, padding=1),
             nn.BatchNorm3d(out_channels) if batch_norm else nn.Identity(),
             nn.ReLU(inplace=True),
-            nn.Conv3d(out_channels, out_channels, kernel_size=1),
+            nn.Conv3d(out_channels, out_channels, kernel_size, padding=1),
             nn.BatchNorm3d(out_channels) if batch_norm else nn.Identity(),
-            nn.ReLU(inplace=True)
-        )
+            nn.ReLU(inplace=True),
+        ]
+        self.conv = nn.Sequential(*layers)
 
     def forward(self, x):
         return self.conv(x)
 
-@register_model("simon-msunet3d")
-class TestUNet3D(ModelBase):
-    #FIXME delete MS
-    def __init__(self, in_channels, num_classes, n_filters, dropout, batch_norm, ds, ms, inference_fusion_mode):
-        super().__init__()
-        self.ds = ds
-        self.inference_fusion_mode = inference_fusion_mode
 
-        # assert all(spatial) > 2, "all spatial dimensions must be > 2"
-        
-        # ======= Encoder =======
-        # (2, 1, 32, 64, 32)
-        self.encoder1 = ConvBlock(in_channels, n_filters, batch_norm=batch_norm)
-        # (1, 8, 32, 64, 32)
-        self.pool1    = nn.MaxPool3d(2, stride=2)
-        # (1, 8, 16, 32, 16)
-        self.drop1    = nn.Dropout3d(dropout)
-        # (1, 8, 16, 32, 16)
+class MSUNet3D(nn.Module):
+    """
+    A dynamic 3D U-Net that can adapt its depth based on the input parameter.
+    It supports deep supervision outputs from multiple decoder levels.
 
-        self.encoder2 = ConvBlock(n_filters, n_filters * 2, batch_norm=batch_norm)
-        self.pool2 = nn.MaxPool3d(2, stride=2)
-        self.drop2 = nn.Dropout3d(dropout)
-        # (1, 16, 8, 16, 8)
+    Additional SOTA considerations:
+      - Ensure that your input volumes are large enough for the number of downsamplings.
+      - Experiment with residual connections or attention mechanisms.
+      - Consider using instance normalization instead of batch normalization in some cases.
+      - Use appropriate loss functions (e.g. Dice loss, focal loss) and data augmentation.
+    """
 
-        self.encoder3 = ConvBlock(n_filters * 2, n_filters * 4, batch_norm=batch_norm)
-        self.pool3 = nn.MaxPool3d(2, stride=2)
-        self.drop3 = nn.Dropout3d(dropout)
-        # (1, 32, 4, 8, 4)
+    def __init__(
+        self,
+        cfg,
+    ):
+        super(MSUNet3D, self).__init__()
+        self.depth = cfg.architecture.depth
+        self.target_shape = cfg.dataset.target_shape
+        self.in_channels = cfg.architecture.in_channels
+        self.n_filters = cfg.architecture.n_filters
+        self.num_classes = cfg.dataset.num_classes
+        self.batch_norm = cfg.architecture.batch_norm
+        self.dropout = cfg.architecture.dropout
+        self.logger = logging.getLogger(__name__)
+        # Build the encoder pathway dynamically
+        self.encoders: nn.ModuleList = nn.ModuleList()
+        self.pools: nn.ModuleList = nn.ModuleList()
+        self.enc_dropouts: nn.ModuleList = nn.ModuleList()
+        self.logger.debug("----Full resolution----")
 
-        self.encoder4 = ConvBlock(n_filters * 4, n_filters * 8, batch_norm=batch_norm)
-        self.pool4 = nn.MaxPool3d(2, stride=2)
-        self.drop4 = nn.Dropout3d(dropout)
-        # (1, 64, 2, 4, 2)
+        for d in range(self.depth):
+            in_ch = self.in_channels if d == 0 else self.n_filters * (2 ** (d - 1))
+            out_ch = self.n_filters * (2**d)
+            self.encoders.append(ConvBlock(in_ch, out_ch, batch_norm=self.batch_norm))
+            self.pools.append(nn.MaxPool3d(kernel_size=2, stride=2))
+            self.enc_dropouts.append(nn.Dropout3d(self.dropout))
+            self.logger.debug(f"in: {in_ch}\t\tout: {out_ch}")
 
-        # ======= Bottleneck =======
-        self.bottleneck = ConvBlock(n_filters * 8, n_filters * 16, batch_norm=batch_norm)
+        # Bottleneck layer (center block, bottom of the U-Net).
+        bn_in_channels = self.n_filters * (2 ** (self.depth - 1))
+        bn_out_channels = self.n_filters * (2**self.depth)
+        self.bn = ConvBlock(bn_in_channels, bn_out_channels, batch_norm=self.batch_norm)
+        self.logger.debug(f"b_in: {bn_in_channels}\tb_out: {bn_out_channels}")
 
-        # ======= Decoder =======
-        self.up4 = nn.ConvTranspose3d(n_filters * 16, n_filters * 8, kernel_size=3, stride=2)
-        self.decoder4 = ConvBlock(n_filters * 16, n_filters * 8, batch_norm=batch_norm)
-        self.drop5 = nn.Dropout3d(dropout)
-        # (1, 64, 4, 8, 4)
+        # Build the decoder pathway dynamically
+        self.up_convs = nn.ModuleList()
+        self.decoders = nn.ModuleList()
+        self.dec_dropouts = nn.ModuleList()
 
-        self.up3 = nn.ConvTranspose3d(n_filters * 8, n_filters * 4, kernel_size=3, stride=2)
-        self.decoder3 = ConvBlock(n_filters * 8, n_filters * 4, batch_norm=batch_norm)
-        self.drop6 = nn.Dropout3d(dropout)
-        # (1, 32, 8, 16, 8)
+        # 0..3, 3..0
+        for d in range(self.depth - 1, -1, -1):
+            in_ch = self.n_filters * (2 ** (d + 1))
+            out_ch = self.n_filters * (2**d)
+            self.up_convs.append(
+                nn.ConvTranspose3d(
+                    in_ch, out_ch, kernel_size=3, stride=2, padding=1, output_padding=1
+                )
+            )
+            self.decoders.append(ConvBlock(in_ch, out_ch, batch_norm=self.batch_norm))
+            self.dec_dropouts.append(nn.Dropout3d(self.dropout))
+            self.logger.debug(f"in: {in_ch}\t\tout: {out_ch}")
 
-        self.up2 = nn.ConvTranspose3d(n_filters * 4, n_filters * 2, kernel_size=3, stride=2)
-        self.decoder2 = ConvBlock(n_filters * 4, n_filters * 2, batch_norm=batch_norm)
-        self.drop7 = nn.Dropout3d(dropout)
-        # (1, 16, 16, 32, 16)
+        # Final layer convolution to map to the number of classes.
+        self.final_conv = nn.Conv3d(self.n_filters, self.num_classes, kernel_size=1)
 
-        self.up1 = nn.ConvTranspose3d(n_filters * 2, n_filters, kernel_size=3, stride=2)
-        self.decoder1 = ConvBlock(n_filters + n_filters, n_filters, batch_norm=batch_norm)
-        # (1, 8, 32, 64, 32)
+        self.logger.debug(f"f_in: {self.n_filters}\t\tf_out: {self.num_classes}")
 
-        self.final_conv = nn.Conv3d(n_filters, num_classes, kernel_size=1)
-
-        # ======= Multiscale Input Blocks (MSBs) =======
-        self.msb2 = ConvBlock(in_channels, n_filters * 2, batch_norm=batch_norm)
-        self.msb3 = ConvBlock(in_channels, n_filters * 4, batch_norm=batch_norm)
-        self.msb4 = ConvBlock(in_channels, n_filters * 8, batch_norm=batch_norm)
-
-        # ======= Deep Supervision Heads =======
-        self.ds2 = nn.Conv3d(n_filters * 2, num_classes, kernel_size=1)
-        self.ds3 = nn.Conv3d(n_filters * 4, num_classes, kernel_size=1)
-        self.ds4 = nn.Conv3d(n_filters * 8, num_classes, kernel_size=1)
-
-    def _forward_training(self, x):
-        x2 = F.interpolate(x, size=(16, 32, 16), mode="trilinear", align_corners=True)
-        x3 = F.interpolate(x, size=(8, 16, 8), mode="trilinear", align_corners=True)
-        x4 = F.interpolate(x, size=(4, 8, 4), mode="trilinear", align_corners=True)
-
-        # print("All shapes")
-        # print("x.shape:", x.shape)
-        # print("x2.shape:", x2.shape)
-        # print("x3.shape:", x3.shape)
-        # print("x4.shape:", x4.shape)
-
-        # Full resolution 
-        enc1 = self.encoder1(x)
-        pool1 = self.drop1(self.pool1(enc1))
-
-        enc2 = self.encoder2(pool1)
-        pool2 = self.drop2(self.pool2(enc2))
-        
-        enc3 = self.encoder3(pool2)
-        pool3 = self.drop3(self.pool3(enc3))
-        
-        enc4 = self.encoder4(pool3)
-        pool4 = self.drop4(self.pool4(enc4))
-
-        bot = self.bottleneck(pool4)
-        
-        up4 = self.up4(bot)
-        up4 = torch.cat([up4, enc4], dim=1)
-        dec4 = self.drop5(self.decoder4(up4))
-
-        up3 = self.up3(dec4)
-        up3 = torch.cat([up3, enc3], dim=1)
-        dec3 = self.drop6(self.decoder3(up3))
-
-        up2 = self.up2(dec3)
-        up2 = torch.cat([up2, enc2], dim=1)
-        dec2 = self.drop7(self.decoder2(up2))
-
-        up1 = self.up1(dec2)
-        up1 = torch.cat([up1, enc1], dim=1)
-        dec1 = self.decoder1(up1)
-
-        final = self.final_conv(dec1)
-
-        # ===== MSB2 =====
-        enc2_ms = self.msb2(x2)
-        pool2_ms = self.drop2(self.pool2(enc2_ms))
-
-        enc3_ms = self.encoder3(pool2_ms)
-        pool3_ms = self.drop3(self.pool3(enc3_ms))
-
-        enc4_ms = self.encoder4(pool3_ms)
-        pool4_ms = self.drop4(self.pool4(enc4_ms))
-        
-        bot2 = self.bottleneck(pool4_ms)
-
-        up4_ms = self.up4(bot2)
-        up4_ms = torch.cat([up4_ms, enc4_ms], dim=1)
-        dec4_ms = self.drop5(self.decoder4(up4_ms))
-
-        up3_ms = self.up3(dec4_ms)
-        up3_ms = torch.cat([up3_ms, enc3_ms], dim=1)
-        dec3_ms = self.drop6(self.decoder3(up3_ms))
-
-        up2_ms = self.up2(dec3_ms)
-        up2_ms = torch.cat([up2_ms, enc2_ms], dim=1)
-        dec2_ms = self.drop7(self.decoder2(up2_ms))
-        out_ms2 = self.ds2(dec2_ms)
-
-        # ===== MSB3 =====
-        enc3_ms2 = self.msb3(x3)
-        pool3_ms2 = self.drop3(self.pool3(enc3_ms2))
-        enc4_ms2 = self.encoder4(pool3_ms2)
-        pool4_ms2 = self.drop4(self.pool4(enc4_ms2))
-        bot3 = self.bottleneck(pool4_ms2)
-
-        up4_ms3 = self.up4(bot3)
-        up4_ms3 = torch.cat([up4_ms3, enc4_ms2], dim=1)
-        dec4_ms3 = self.drop5(self.decoder4(up4_ms3))
-
-        up3_ms3 = self.up3(dec4_ms3)
-        up3_ms3 = torch.cat([up3_ms3, enc3_ms2], dim=1)
-        dec3_ms3 = self.drop6(self.decoder3(up3_ms3))
-        out_ms3 = self.ds3(dec3_ms3)
-        
-        # ===== MSB4 =====
-        enc4_ms3 = self.msb4(x4)
-        pool4_ms3 = self.drop4(self.pool4(enc4_ms3))
-        bot4 = self.bottleneck(pool4_ms3)
-
-        up4_ms4 = self.up4(bot4)
-        up4_ms4 = torch.cat([up4_ms4, enc4_ms3], dim=1)
-        dec4_ms4 = self.drop5(self.decoder4(up4_ms4))
-        out_ms4 = self.ds4(dec4_ms4)
-
-        segmentations = (final, out_ms2, out_ms3, out_ms4)
-        consistency = (enc2, enc3, enc4), (enc2_ms, enc3_ms2, enc4_ms3)
-        return segmentations, consistency
-
-    def _forward_inference(self, x):
-        _, _, D, H, W = x.shape
-        input_shape = (D, H, W)
-        print("[INFERENCE]: The input shape is", input_shape) 
-        #FIXME should be target shape 
-        
-        base_shape = (32, 64, 32)
-
-        def div_shape(shape, factor):
-            return tuple(s // factor for s in shape)
-
-        shape_to_entry = {
-            base_shape: 'enc1',
-            div_shape(base_shape, 2): 'msb2',
-            div_shape(base_shape, 4): 'msb3',
-            div_shape(base_shape, 8): 'msb4'
-        }
-
-        rounded_shape = tuple(2 ** round(np.log2(s)) for s in input_shape)
-        if rounded_shape not in shape_to_entry:
-            raise ValueError(f"Unsupported input shape {input_shape} (rounded: {rounded_shape}). "
-                             f"Expected one of: {list(shape_to_entry.keys())}")
-
-        entry = shape_to_entry[rounded_shape]
-        
-        if entry == 'enc1':
-            enc1 = self.encoder1(x)
-            pool1 = self.drop1(self.pool1(enc1))
-            enc2 = self.encoder2(pool1)
-            pool2 = self.drop2(self.pool2(enc2))
-            enc3 = self.encoder3(pool2)
-            pool3 = self.drop3(self.pool3(enc3))
-            enc4 = self.encoder4(pool3)
-            pool4 = self.drop4(self.pool4(enc4))
-            bot = self.bottleneck(pool4)
-
-            up4 = self.up4(bot)
-            up4 = torch.cat([up4, enc4], dim=1)
-            dec4 = self.drop5(self.decoder4(up4))
-            up3 = self.up3(dec4)
-            up3 = torch.cat([up3, enc3], dim=1)
-            dec3 = self.drop6(self.decoder3(up3))
-            up2 = self.up2(dec3)
-            up2 = torch.cat([up2, enc2], dim=1)
-            dec2 = self.drop7(self.decoder2(up2))
-            up1 = self.up1(dec2)
-            up1 = torch.cat([up1, enc1], dim=1)
-            dec1 = self.decoder1(up1)
-            return self.final_conv(dec1)
-
-        elif entry == 'msb2':
-            enc2 = self.msb2(x)
-            pool2 = self.drop2(self.pool2(enc2))
-            enc3 = self.encoder3(pool2)
-            pool3 = self.drop3(self.pool3(enc3))
-            enc4 = self.encoder4(pool3)
-            pool4 = self.drop4(self.pool4(enc4))
-            bot = self.bottleneck(pool4)
-
-            up4 = self.up4(bot)
-            up4 = torch.cat([up4, enc4], dim=1)
-            dec4 = self.drop5(self.decoder4(up4))
-            up3 = self.up3(dec4)
-            up3 = torch.cat([up3, enc3], dim=1)
-            dec3 = self.drop6(self.decoder3(up3))
-            up2 = self.up2(dec3)
-            up2 = torch.cat([up2, enc2], dim=1)
-            dec2 = self.drop7(self.decoder2(up2))
-            return self.ds2(dec2)
-
-        elif entry == 'msb3':
-            enc3 = self.msb3(x)
-            pool3 = self.drop3(self.pool3(enc3))
-            enc4 = self.encoder4(pool3)
-            pool4 = self.drop4(self.pool4(enc4))
-            bot = self.bottleneck(pool4)
-
-            up4 = self.up4(bot)
-            up4 = torch.cat([up4, enc4], dim=1)
-            dec4 = self.drop5(self.decoder4(up4))
-            up3 = self.up3(dec4)
-            up3 = torch.cat([up3, enc3], dim=1)
-            dec3 = self.drop6(self.decoder3(up3))
-            return self.ds3(dec3)
-
-        elif entry == 'msb4':
-            enc4 = self.msb4(x)
-            pool4 = self.drop4(self.pool4(enc4))
-            bot = self.bottleneck(pool4)
-            up4 = self.up4(bot)
-            up4 = torch.cat([up4, enc4], dim=1)
-            dec4 = self.drop5(self.decoder4(up4))
-            return self.ds4(dec4)
+        self.logger.debug("-----MS resolution-----")
+        # ===== Multiscale Input Blocks =====
+        # one MSB per downsampling level (excluding full resolution)
+        self.msb_blocks = nn.ModuleList()
+        self.ms_heads = nn.ModuleList()
+        for k in range(1, self.depth):
+            self.msb_blocks.append(
+                ConvBlock(
+                    self.in_channels,
+                    self.n_filters * (2**k),
+                    batch_norm=self.batch_norm,
+                )
+            )
+            self.logger.debug(
+                f"in: {self.in_channels}\t\tout: {self.n_filters * (2 ** k)}"
+            )
+            # 1x1 head to produce segmentation at that scale,
+            # otherwise, we'd just have n_filters * (2 ** k) channels/feature maps for output
+            # when we want num_classes
+            self.ms_heads.append(
+                nn.Conv3d(self.n_filters * (2**k), self.num_classes, kernel_size=1)
+            )
+        self.logger.debug("-----------------------")
 
     def forward(self, x):
-        return self._forward_training(x) if self.training else self._forward_inference(x)
+        min_size = 2**self.depth
+        assert all(
+            dim >= min_size for dim in x.shape[2:]
+        ), f"Input spatial dimensions must be at least {min_size}, but got {x.shape[2:]}"
 
-    @classmethod
-    def from_config(cls, config: DictConfig) -> 'TestUNet3D':
-        return cls(**get_common_args(config))
+        encoder_feats = []
+        out = x
+
+        # Encoder pathway
+        for enc, pool, dropout in zip(self.encoders, self.pools, self.enc_dropouts):
+            out = enc(out)
+            encoder_feats.append(out)
+            out = dropout(pool(out))
+
+        # Copying as we will pop() encoder_feats in decoder,
+        # but still need the encoder features for consistency loss.
+        full_enc_feats = list(encoder_feats)
+
+        # Center
+        center_out = self.bn(out)
+
+        # Decoder pathway
+        decoder_feats = []
+        out = center_out
+
+        for up_conv, decoder, dropout in zip(
+            self.up_convs, self.decoders, self.dec_dropouts
+        ):
+            out = up_conv(out)
+            skip = encoder_feats.pop()  # pop the last feature appended
+            out = torch.cat([out, skip], dim=1)
+            out = decoder(out)
+            out = dropout(out)
+            decoder_feats.append(out)
+
+        final_out = self.final_conv(out)
+
+        # ===== Multiscale inputs (during training) =====
+        ms_outputs = []
+        D, H, W = x.shape[2:]
+        msb_feats = []  # msb1, msb2, msb3
+        for d in range(1, self.depth):
+            # Downsampling
+            target_size = (D // (2**d), H // (2**d), W // (2**d))
+            x_ms = F.interpolate(
+                x, size=target_size, mode="trilinear", align_corners=True
+            )
+
+            # Build encoder features for MS path
+            ms_feats = []
+            msb = self.msb_blocks[d - 1]
+            out_ms = msb(x_ms)
+            msb_feats.append(out_ms)  # This line i added
+            ms_feats.append(out_ms)
+            out_ms = self.pools[d](out_ms)
+            out_ms = self.enc_dropouts[d](out_ms)
+
+            for enc, pool, dropout in zip(
+                list(self.encoders)[d + 1 :],
+                list(self.pools)[d + 1 :],
+                list(self.enc_dropouts)[d + 1 :],
+            ):
+                out_ms = enc(out_ms)
+                ms_feats.append(out_ms)
+                out_ms = dropout(pool(out_ms))
+
+            # bottleneck
+            out_ms = self.bn(out_ms)
+
+            num_ups = self.depth - d
+
+            # Decoder up to match MS scale
+            for up_conv, dec, drop in zip(
+                list(self.up_convs)[
+                    :num_ups
+                ],  # or remove list but # type: ignore[reportArgumentType]
+                list(self.decoders)[:num_ups],
+                list(self.dec_dropouts)[:num_ups],
+            ):
+                out_ms = up_conv(out_ms)
+                skip = ms_feats.pop()  # pop the last feature appended
+                out_ms = torch.cat([out_ms, skip], dim=1)
+                out_ms = dec(out_ms)
+                out_ms = drop(out_ms)
+
+            ms_seg = self.ms_heads[d - 1](out_ms)
+            ms_outputs.append(ms_seg)
+
+        segmentations = (final_out, *ms_outputs)
+        consistency_pairs = tuple(zip(msb_feats, full_enc_feats[1:]))
+
+        return segmentations, consistency_pairs

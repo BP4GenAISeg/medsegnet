@@ -1,10 +1,14 @@
 defaults:
-  - backbone-unet
+  - backbone-unet3d
 
-deep_supervision:
-  enabled: true # Training with deep supervision
-  levels: 3
+path:
+  _target_: models.DeepSupervision.DSUNet3D
 
-fusion: # Fusion strategy for deep supervision and output mode
-  mode: "no_fuse_only_final" # Options: 'weighted_softmax', 'weighted_majority', 'no_fuse_only_final'
-  weights: [0.1, 0.3, 0.6]
+name: ds-unet3d
+depth: 5
+dropout: 0.3
+drop_last: false
+ds_levels: 4
+
+fusion: "no_fuse_only_final" # Options: 'weighted_softmax', 'weighted_majority', 'no_fuse_only_final'
+

@@ -14,15 +14,15 @@ import torch.nn.functional as F
 def compute_iou_score(
     preds: torch.Tensor,
     masks: torch.Tensor,
-    cls: int,
+    c: int,
     smooth: float = 1e-6,
-) -> float:
+) -> torch.Tensor:
     """Compute IoU score for a single class."""
-    pred_c = (preds == cls).float()
-    mask_c = (masks == cls).float()
+    pred_c = (preds == c).float()
+    mask_c = (masks == c).float()
     intersection = (pred_c * mask_c).sum()
     union = pred_c.sum() + mask_c.sum() - intersection
-    return ((intersection + smooth) / (union + smooth)).item()
+    return (intersection + smooth) / (union + smooth)
 
 
 def iou_score_classes(
@@ -31,7 +31,7 @@ def iou_score_classes(
     num_classes: int,
     smooth: float = 1e-6,
     ignore_index: Optional[int] = None,
-) -> list[float]:
+) -> list[torch.Tensor]:
     """Return list of IoU scores for each non-ignored class."""
     scores = []
     for c in range(num_classes):
@@ -48,12 +48,12 @@ def iou_score(
     num_classes: int,
     smooth: float = 1e-6,
     ignore_index: Optional[int] = None,
-) -> float:
+) -> torch.Tensor:
     """Return average IoU score across non-ignored classes."""
     iou_scores = iou_score_classes(preds, masks, num_classes, smooth, ignore_index)
     if not iou_scores:
-        return 0.0
-    return sum(iou_scores) / len(iou_scores)
+        return torch.tensor(0.0, device=preds.device)
+    return torch.stack(iou_scores).mean()
 
 
 # ----- End IoU (Intersection over Union) -----
@@ -72,9 +72,7 @@ def compute_dice_score(
     intersection = (pred_c * mask_c).sum()
     sum_pred = pred_c.sum()
     sum_mask = mask_c.sum()
-    return (2 * intersection + smooth) / (
-        sum_pred + sum_mask + smooth
-    )  # FIXME consider if smooth is stupid, since sum_mask should always have a value right and if not then we want 0, but in that case we get 1 => so we properly need a if-statement of sort that saftety check this.
+    return (2 * intersection + smooth) / (sum_pred + sum_mask + smooth)
 
 
 def _compute_dice_scores(
@@ -83,13 +81,13 @@ def _compute_dice_scores(
     num_classes: int,
     smooth: float,
     ignore_index: Optional[int],
-) -> list[float]:
+) -> list[torch.Tensor]:
     """Helper to compute Dice scores for all classes (excluding `ignore_index`)."""
     scores = []
     for c in range(num_classes):
         if ignore_index is not None and c == ignore_index:
             continue  # Skip ignored class
-        score = compute_dice_score(preds, masks, c, smooth).item()
+        score = compute_dice_score(preds, masks, c, smooth)
         scores.append(score)
     return scores
 
@@ -100,21 +98,21 @@ def dice_coefficient(
     num_classes: int,
     smooth: float = 1e-6,
     ignore_index: Optional[int] = None,
-) -> float:
+) -> torch.Tensor:
     """Return average Dice coefficient across non-ignored classes."""
     dice_scores = _compute_dice_scores(preds, masks, num_classes, smooth, ignore_index)
     if not dice_scores:
-        return 0.0
-    return sum(dice_scores) / len(dice_scores)
+        return torch.tensor(0.0, device=preds.device)
+    return torch.stack(dice_scores).mean()
 
-
+#TODO: We are using this below in code base, but actually is a copy of _compute_dice_scores
 def dice_coefficient_classes(
     preds: torch.Tensor,
     masks: torch.Tensor,
     num_classes: int,
     smooth: float = 1e-6,
     ignore_index: Optional[int] = None,
-) -> list[float]:
+) -> list[torch.Tensor]:
     """Return list of Dice scores for each non-ignored class."""
     return _compute_dice_scores(preds, masks, num_classes, smooth, ignore_index)
 
@@ -126,15 +124,15 @@ def dice_coefficient_classes(
 def precision_score_class(
     preds: torch.Tensor,
     masks: torch.Tensor,
-    cls: int,
+    c: int,
     smooth: float = 1e-6,
-) -> float:
-    pred_c = (preds == cls).float()
-    mask_c = (masks == cls).float()
+) -> torch.Tensor:
+    pred_c = (preds == c).float()
+    mask_c = (masks == c).float()
     tp = (pred_c * mask_c).sum()
     fp = (pred_c * (1 - mask_c)).sum()
     precision = (tp + smooth) / (tp + fp + smooth)
-    return precision.item()
+    return precision
 
 
 def precision_score_classes(
@@ -143,7 +141,7 @@ def precision_score_classes(
     num_classes: int,
     smooth: float = 1e-6,
     ignore_index: Optional[int] = None,
-) -> list[float]:
+) -> list[torch.Tensor]:
     scores = []
     for c in range(num_classes):
         if ignore_index is not None and c == ignore_index:
@@ -159,9 +157,11 @@ def precision_score(
     num_classes: int,
     smooth: float = 1e-6,
     ignore_index: Optional[int] = None,
-) -> float:
+) -> torch.Tensor:
     scores = precision_score_classes(preds, masks, num_classes, smooth, ignore_index)
-    return sum(scores) / len(scores) if scores else 0.0
+    if not scores:
+        return torch.tensor(0.0, device=preds.device)
+    return torch.stack(scores).mean()
 
 
 # ----- End Precision -----
@@ -171,15 +171,15 @@ def precision_score(
 def recall_score_class(
     preds: torch.Tensor,
     masks: torch.Tensor,
-    cls: int,
+    c: int,
     smooth: float = 1e-6,
-) -> float:
-    pred_c = (preds == cls).float()
-    mask_c = (masks == cls).float()
+) -> torch.Tensor:
+    pred_c = (preds == c).float()
+    mask_c = (masks == c).float()
     tp = (pred_c * mask_c).sum()
     fn = ((1 - pred_c) * mask_c).sum()
     recall = (tp + smooth) / (tp + fn + smooth)
-    return recall.item()
+    return recall
 
 
 def recall_score_classes(
@@ -188,7 +188,7 @@ def recall_score_classes(
     num_classes: int,
     smooth: float = 1e-6,
     ignore_index: Optional[int] = None,
-) -> list[float]:
+) -> list[torch.Tensor]:
     scores = []
     for c in range(num_classes):
         if ignore_index is not None and c == ignore_index:
@@ -204,9 +204,11 @@ def recall_score(
     num_classes: int,
     smooth: float = 1e-6,
     ignore_index: Optional[int] = None,
-) -> float:
+) -> torch.Tensor:
     scores = recall_score_classes(preds, masks, num_classes, smooth, ignore_index)
-    return sum(scores) / len(scores) if scores else 0.0
+    if not scores:
+        return torch.tensor(0.0, device=preds.device)
+    return torch.stack(scores).mean()
 
 
 # ----- End Recall -----
@@ -216,11 +218,11 @@ def recall_score(
 def f1_score_class(
     preds: torch.Tensor,
     masks: torch.Tensor,
-    cls: int,
+    c: int,
     smooth: float = 1e-6,
-) -> float:
-    precision = precision_score_class(preds, masks, cls, smooth)
-    recall = recall_score_class(preds, masks, cls, smooth)
+) -> torch.Tensor:
+    precision = precision_score_class(preds, masks, c, smooth)
+    recall = recall_score_class(preds, masks, c, smooth)
     f1 = (2 * precision * recall + smooth) / (precision + recall + smooth)
     return f1
 
@@ -231,7 +233,7 @@ def f1_score_classes(
     num_classes: int,
     smooth: float = 1e-6,
     ignore_index: Optional[int] = None,
-) -> list[float]:
+) -> list[torch.Tensor]:
     scores = []
     for c in range(num_classes):
         if ignore_index is not None and c == ignore_index:
@@ -247,9 +249,11 @@ def f1_score(
     num_classes: int,
     smooth: float = 1e-6,
     ignore_index: Optional[int] = None,
-) -> float:
+) -> torch.Tensor:
     scores = f1_score_classes(preds, masks, num_classes, smooth, ignore_index)
-    return sum(scores) / len(scores) if scores else 0.0
+    if not scores:
+        return torch.tensor(0.0, device=preds.device)
+    return torch.stack(scores).mean()
 
 
 # ----- End F1 -----

@@ -1,7 +1,13 @@
 # generic training defaults
-num_epochs: 100
+num_epochs: 80
 batch_size: 2
+num_workers: 4 # parallel CPU workers to keep the GPU fed
+pin_memory: true # page‐lock host memory for faster .to(device) copies
+persistent_workers: true
+prefetch_factor: 2 # each worker will buffer 2 batches ahead
 learning_rate: 3e-4
+use_amp: true # mixed precision training
+grad_clip_norm: 1.0 # gradient clipping
 
 loss:
   _target_: utils.losses.CombinedLoss

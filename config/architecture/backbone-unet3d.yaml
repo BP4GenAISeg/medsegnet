@@ -4,6 +4,8 @@
 # *  dataset-specific overrides.                                       *
 # *********************************************************************
 
+# _target_: models.unet3d.UNet3D
+name: unet3d
 depth: 4
 in_channels: 1
 n_filters: 8

@@ -1,4 +1,4 @@
-from .unet_trainer import UNetTrainer
+from .base_trainer import BaseTrainer
 from .deep_supervision_trainer import DeepSupervisionTrainer
 from .multiscale_trainer import MultiscaleTrainer
 
@@ -10,4 +10,4 @@ def get_trainer(cfg, *args, **kwargs):
     elif arch == "ms-unet3d":
         return MultiscaleTrainer(cfg, *args, **kwargs)
     else:
-        return UNetTrainer(cfg, *args, **kwargs)
+        return BaseTrainer(cfg, *args, **kwargs)

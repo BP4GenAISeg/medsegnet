@@ -14,6 +14,8 @@ import logging
 import sys
 import numpy as np
 import random
+import torch.nn.functional as F
+
 
 from data.datasets import (
     VALID_TASKS,
@@ -97,6 +99,13 @@ def setup_logging(logging_cfg: DictConfig, run_exp_dir: str):
     root.debug("Root logger configuration complete.")
 
 
+def resize_masks_to(seg: torch.Tensor, masks: torch.Tensor) -> torch.Tensor:
+    if masks.ndim == 4:
+        masks = masks.unsqueeze(1)  # Add channel dimension (N, 1, D, H, W)
+    resized = F.interpolate(masks.float(), size=seg.shape[2:], mode="nearest")
+    return resized.squeeze(1).long()
+
+
 # TODO: Consider a generalized dataset factory
 # def get_dataset(task_name, *args, **kwargs):
 #    if task_name not in DATASET_MAPPING:
@@ -109,8 +118,8 @@ def setup_logging(logging_cfg: DictConfig, run_exp_dir: str):
 class RunManager:
     def __init__(self, cfg: DictConfig):
         self.cfg = cfg
-        self.model_name = cfg.get("active_architecture", {})
-        self.task_name = cfg.get("active_dataset", {})
+        self.model_name = cfg.architecture.name or ""
+        self.task_name = cfg.dataset.name or ""
 
         if not self.model_name or not self.task_name:
             raise ValueError(
