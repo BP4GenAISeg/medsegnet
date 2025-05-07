@@ -4,7 +4,7 @@ from .multiscale_trainer import MultiscaleTrainer
 
 
 def get_trainer(cfg, *args, **kwargs):
-    arch = cfg.active_architecture
+    arch = cfg.architecture.name
     if arch == "ds-unet3d":
         return DeepSupervisionTrainer(cfg, *args, **kwargs)
     elif arch == "ms-unet3d":

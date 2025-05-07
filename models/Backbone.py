@@ -26,6 +26,7 @@ class BackboneUNet3D(nn.Module):
     def __init__(self, cfg):
         super(BackboneUNet3D, self).__init__()
         self.depth = cfg.architecture.depth
+        self.target_shape = cfg.dataset.target_shape
         self.in_channels = cfg.architecture.in_channels
         self.n_filters = cfg.architecture.n_filters
         self.batch_norm = cfg.architecture.batch_norm

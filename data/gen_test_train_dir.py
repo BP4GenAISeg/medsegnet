@@ -7,29 +7,44 @@ import nibabel as nib
 import torch
 import torch.nn.functional as F
 import argparse
+import torchio as tio
+from torchio.transforms import CropOrPad
 
 
-def downsample_nifti(input_path, output_path, factor, interpolation):
+def downsample_nifti(input_path, output_path, factor, interpolation, target_shape):
     img = nib.load(input_path)
-    data = img.get_fdata()
-    data_tensor = torch.tensor(data, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
-    scale_factor = 1 / factor
+    data = img.get_fdata(dtype=np.float32)
+    # Only one unsqueeze → (1, D, H, W)
+    tensor = torch.from_numpy(data).unsqueeze(0)
+
+    # 1) Wrap in ScalarImage with the real affine
+    tio_img = tio.ScalarImage(tensor=tensor, affine=img.affine)
+
+    # 2) CropOrPad (functional!)
+    cp = tio.CropOrPad(target_shape, padding_mode="constant")
+    tio_img = cp(tio_img)
+
+    # 3) Prepare for interpolation
+    x = tio_img.data  # (1, D', H', W')
+    x = x.unsqueeze(0)  # (1, 1, D', H', W')
+    scale = 1.0 / factor
+
     if interpolation == "trilinear":
-        downsampled_tensor = F.interpolate(
-            data_tensor,
-            scale_factor=scale_factor,
-            mode="trilinear",
-            align_corners=False,
+        out = F.interpolate(
+            x, scale_factor=scale, mode="trilinear", align_corners=False
         )
     elif interpolation == "nearest":
-        downsampled_tensor = F.interpolate(
-            data_tensor, scale_factor=scale_factor, mode="nearest"
-        )
+        out = F.interpolate(x, scale_factor=scale, mode="nearest")
     else:
-        raise ValueError("Unsupported interpolation type")
-    downsampled_data = downsampled_tensor.squeeze().numpy()
-    downsampled_img = nib.Nifti1Image(downsampled_data, img.affine)
-    nib.save(downsampled_img, output_path)
+        raise ValueError("Unsupported interpolation")
+
+    out = out.squeeze(0).squeeze(0)
+    out_data = out.numpy()
+
+    # 4) Fix affine & save
+    new_affine = tio_img.affine.copy()
+    new_affine[:3, :3] /= scale
+    nib.save(nib.Nifti1Image(out_data, new_affine), output_path)
 
 
 def create_scaled_directories(base_dir, scales):
@@ -38,7 +53,7 @@ def create_scaled_directories(base_dir, scales):
         os.makedirs(scale_dir, exist_ok=True)
 
 
-def split_and_organize_data(input_dir, output_dir, split_ratio, scales):
+def split_and_organize_data(input_dir, output_dir, split_ratio, scales, target_shape):
     images_tr_dir = os.path.join(input_dir, "imagesTr")
     labels_tr_dir = os.path.join(input_dir, "labelsTr")
 
@@ -72,12 +87,14 @@ def split_and_organize_data(input_dir, output_dir, split_ratio, scales):
                 os.path.join(output_dir, "imagesTr", f"scale{scale}", image_file),
                 factor,
                 interpolation="trilinear",
+                target_shape=target_shape,
             )
             downsample_nifti(
                 os.path.join(labels_tr_dir, label_file),
                 os.path.join(output_dir, "labelsTr", f"scale{scale}", label_file),
                 factor,
                 interpolation="nearest",
+                target_shape=target_shape,
             )
 
     for image_file, label_file in test_set:
@@ -88,12 +105,14 @@ def split_and_organize_data(input_dir, output_dir, split_ratio, scales):
                 os.path.join(images_ts_dir, f"scale{scale}", image_file),
                 factor,
                 interpolation="trilinear",
+                target_shape=target_shape,
             )
             downsample_nifti(
                 os.path.join(labels_tr_dir, label_file),
                 os.path.join(labels_ts_dir, f"scale{scale}", label_file),
                 factor,
                 interpolation="nearest",
+                target_shape=target_shape,
             )
 
 
@@ -120,6 +139,12 @@ if __name__ == "__main__":
         default=[0, 1, 2, 3],
         help="List of scales to generate (default: [0, 1, 2, 3]).",
     )
+    parser.add_argument(
+        "--target_shape",
+        type=int,
+        nargs=3,
+        help="Target shape for downsampling.",
+    )
 
     args = parser.parse_args()
 
@@ -133,4 +158,5 @@ if __name__ == "__main__":
         output_dir=f"{output_dir}",
         split_ratio=args.split_ratio,
         scales=args.scales,
+        target_shape=args.target_shape,
     )

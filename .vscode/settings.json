@@ -15,7 +15,7 @@
   "python.testing.pytestEnabled": false,
   "python.testing.unittestEnabled": true,
   "python.analysis.autoImportCompletions": true,
-  "python.analysis.typeCheckingMode": "standard",
+  "python.analysis.typeCheckingMode": "off",
   "todo-tree.highlights.customHighlight": {
     "BUG": {
       "icon": "bug",

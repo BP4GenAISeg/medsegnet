@@ -1,3 +1,5 @@
+from os import close
+import numpy as np
 from models.Backbone import BackboneUNet3D, ConvBlock
 import torch
 from torch import nn
@@ -77,6 +79,111 @@ class MSUNet3D(BackboneUNet3D):
         consistency_pairs = tuple(zip(msb_feats, self.enc_feats_copy[1:]))
 
         return segmentations, consistency_pairs
+
+    def run_inference(self, x):
+        D, H, W = x.shape[2:]
+        input_shape = (D, H, W)
+
+        def _div_shape(shape, factor):
+            return tuple(s // factor for s in shape)
+
+        target_shape = tuple(self.target_shape)
+        depth = self.depth
+
+        # build mapping shape -> entry string
+        shape_to_entry = {target_shape: "enc1"}
+        for d in range(1, depth):
+            key = _div_shape(target_shape, 2**d)
+            shape_to_entry[key] = f"msb{d}"
+
+        allowed_shapes = list(shape_to_entry.keys())
+        rounded = tuple(2 ** round(np.log2(s)) for s in input_shape)
+
+        if rounded not in shape_to_entry:
+            raise ValueError(
+                f"Input shape {input_shape} is not in allowed shapes {allowed_shapes}"
+            )
+            # dist_and_shapes = []
+            # for shape in allowed_shapes:
+            #     dist = sum((r - c) ** 2 for r, c in zip(rounded, shape))
+            #     dist_and_shapes.append((dist, shape))
+            # _, closest_shape = min(dist_and_shapes, key=lambda pair: pair[0])
+            # x = F.interpolate(
+            #     x, size=closest_shape, mode="trilinear", align_corners=True
+            # )
+            # label = F.interpolate(label, size=closest_shape, mode="nearest")
+
+            # print(f"Input shape rounded to: {closest_shape}")
+            # print(f"Closest shape: {closest_shape}")
+            # print(f"Entry point: {shape_to_entry[closest_shape]}")
+            # rounded = closest_shape
+
+        # get entry point
+        entry_gateway = shape_to_entry[rounded]
+
+        if entry_gateway == "enc1":
+            # full resolution
+            out = x
+            encoder_feats = []
+            for enc, pool, drop in zip(self.encoders, self.pools, self.enc_dropouts):
+                out = enc(out)
+                encoder_feats.append(out)
+                out = drop(pool(out))
+
+            # bottleneck
+            out = self.bn(out)
+
+            # Decoder pathway
+            for up_conv, decoder, drop in zip(
+                self.up_convs, self.decoders, self.dec_dropouts
+            ):
+                out = up_conv(out)
+                skip = encoder_feats.pop()
+                out = torch.cat([out, skip], dim=1)
+                out = decoder(out)
+                out = drop(out)
+
+            final_out = self.final_conv(out)
+            return final_out
+        elif entry_gateway.startswith("msb"):
+            # lower resolution image
+            level = int(entry_gateway.replace("msb", ""))
+            msb = self.msb_blocks[level - 1]
+            out = msb(x)
+            ms_feats = []
+            ms_feats.append(out)
+            out = self.pools[level](out)
+            out = self.enc_dropouts[level](out)
+
+            for enc, pool, drop in zip(
+                list(self.encoders)[level + 1 :],
+                list(self.pools)[level + 1 :],
+                list(self.enc_dropouts)[level + 1 :],
+            ):
+                out = enc(out)
+                ms_feats.append(out)
+                out = drop(pool(out))
+
+            # bottleneck
+            out = self.bn(out)
+
+            num_ups = depth - level
+            # decoder up to match MS scale
+            for up_conv, dec, drop in zip(
+                list(self.up_convs)[:num_ups],
+                list(self.decoders)[:num_ups],
+                list(self.dec_dropouts)[:num_ups],
+            ):
+                out = up_conv(out)
+                skip = ms_feats.pop()
+                out = torch.cat([out, skip], dim=1)
+                out = dec(out)
+                out = drop(out)
+
+            final_out = self.ms_heads[level - 1](out)  # ms_heads not final_conv
+            return final_out
+        else:
+            raise ValueError(f"Unknown entry point in Multiscale UNet: {entry_gateway}")
 
 
 class AlternativeMSUNet3D(MSUNet3D):

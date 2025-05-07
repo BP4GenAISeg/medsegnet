@@ -17,6 +17,7 @@ from models import DeepSupervision
 from trainers.base_trainer import BaseTrainer
 from trainers.deep_supervision_trainer import DeepSupervisionTrainer
 from trainers.multiscale_trainer import MultiscaleTrainer
+from trainers.trainer_factory import get_trainer
 from utils.assertions import ensure_has_attr, ensure_has_attrs
 from utils.losses import get_loss_fn
 from utils.utils import RunManager, setup_logging, setup_seed
@@ -78,7 +79,7 @@ def main(cfg: DictConfig):
 
     wandb_logger = get_wandb_logger(cfg=cfg, model=model)
 
-    trainer = MultiscaleTrainer(
+    trainer = get_trainer(
         cfg,
         model,
         train_dataloader,
