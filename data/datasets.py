@@ -90,15 +90,31 @@ class MedicalDecathlonDataset(Dataset):
     def __getitem__(self, idx):
         image, mask = self.load_img_and_gts(idx)
 
-        # Add channel dim and create subject
-        image = image[np.newaxis]
-        mask = mask[np.newaxis]
+        if isinstance(image, np.ndarray):
+            image = torch.from_numpy(image)
+        if isinstance(mask, np.ndarray):
+            mask = torch.from_numpy(mask)
+
+        if image.ndim == 3:
+            # Image is greyscale, 1 input channel which we need to add
+            image = image.unsqueeze(0)
+        elif image.ndim == 4:
+            # When during the Brain MRI segmentation task
+            # We have multiple modalities, which will be the input channels
+            pass
+        else:
+            raise ValueError(f"Invalid image shape: {image.shape}")
+
+        if mask.ndim == 3:
+            # Mask is greyscale, 1 input channel which we need to add
+            mask = mask.unsqueeze(0)
+            mask = mask.permute(0, 3, 2, 1)
+        else:
+            raise ValueError(f"Invalid mask shape: {mask.shape}")
 
         subject = tio.Subject(
             image=tio.ScalarImage(tensor=image), mask=tio.LabelMap(tensor=mask)
         )
-
-        # Apply transforms
         subject = self.transform(subject)
 
         # FIXME: We need to check if image is shaped as (D, H, W)
@@ -118,12 +134,10 @@ class BrainTumourDataset(MedicalDecathlonDataset):
 
     def load_img_and_gts(self, idx, mod_idx=1):
         image, mask = super().load_img_and_gts(idx)  # (W, H, D, Modalities)
-        image = image[:, :, :, mod_idx]  # (W, H, D)
-        # image = torch.from_numpy(image).permute(3, 2, 1, 0)             # (Modalities, W, H, D)
-
+        print(f"image shape: {image.shape}")
+        image = torch.from_numpy(image).permute(3, 2, 1, 0)
+        print(f"image shape: {image.shape}")
         return image, mask
-
-    ""
 
     def __getitem__(self, idx):
         image, label = super().__getitem__(idx)
